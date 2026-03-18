@@ -26,8 +26,17 @@ export async function POST(request) {
       return Response.json({ reply: "Server not configured" }, { status: 500 });
     }
 
+    const systemPrompt = [
+      "You are a financial expert.",
+      "Respond in clear, professional English.",
+      "Format the response in Markdown with these sections:",
+      "Summary (2-3 sentences), Key Points (bullets), Risks/Assumptions (bullets), Next Steps (bullets).",
+      "Also include a concise table in Markdown that summarizes key figures or comparisons.",
+    ].join(" ");
+    const promptText = `${systemPrompt}\n\nUser question: ${message}`;
+
     const command = new RetrieveAndGenerateCommand({
-      input: { text: message },
+      input: { text: promptText },
       retrieveAndGenerateConfiguration: {
         type: "KNOWLEDGE_BASE",
         knowledgeBaseConfiguration: {

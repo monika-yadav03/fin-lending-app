@@ -28,7 +28,46 @@ function renderMarkdown(text) {
     }
   };
 
-  for (const line of lines) {
+  const isTableSeparator = (line) =>
+    /^\s*\|?(\s*:?-{3,}:?\s*\|)+\s*$/.test(line);
+  const isTableRow = (line) => /\|/.test(line);
+  const parseRow = (line) =>
+    line
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|")
+      .map((cell) => cell.trim());
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      closeLists();
+      const headerCells = parseRow(line);
+      i += 2; // skip separator
+      const bodyRows = [];
+      while (i < lines.length && lines[i].trim() !== "" && isTableRow(lines[i])) {
+        bodyRows.push(parseRow(lines[i]));
+        i++;
+      }
+      i--; // for-loop will increment
+
+      html += "<table class=\"md-table\"><thead><tr>";
+      for (const cell of headerCells) {
+        html += `<th>${cell}</th>`;
+      }
+      html += "</tr></thead><tbody>";
+      for (const row of bodyRows) {
+        html += "<tr>";
+        for (const cell of row) {
+          html += `<td>${cell}</td>`;
+        }
+        html += "</tr>";
+      }
+      html += "</tbody></table>";
+      continue;
+    }
     if (/^#{3}\s+/.test(line)) {
       closeLists();
       html += `<h3>${line.replace(/^#{3}\s+/, "")}</h3>`;

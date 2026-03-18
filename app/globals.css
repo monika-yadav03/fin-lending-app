@@ -202,6 +202,7 @@ body {
  padding: 14px 16px;
  line-height: 1.6;
  width: 100%;
+ text-align: left;
 }
 
 .ai-content h1,
@@ -209,6 +210,18 @@ body {
 .ai-content h3 {
  margin: 12px 0 8px;
  font-weight: 700;
+}
+
+.ai-content h1 {
+ font-size: 18px;
+}
+
+.ai-content h2 {
+ font-size: 16px;
+}
+
+.ai-content h3 {
+ font-size: 14px;
 }
 
 .ai-content p {
@@ -223,6 +236,24 @@ body {
 
 .ai-content li {
  margin: 4px 0;
+}
+
+.ai-content .md-table {
+ width: 100%;
+ border-collapse: collapse;
+ margin: 10px 0;
+ font-size: 14px;
+}
+
+.ai-content .md-table th,
+.ai-content .md-table td {
+ border: 1px solid var(--border);
+ padding: 8px 10px;
+ text-align: left;
+}
+
+.ai-content .md-table th {
+ background: #151a20;
 }
 
 
