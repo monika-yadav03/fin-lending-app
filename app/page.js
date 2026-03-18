@@ -53,7 +53,7 @@ function renderMarkdown(text) {
       }
       i--; // for-loop will increment
 
-      html += "<table class=\"md-table\"><thead><tr>";
+      html += "<div class=\"md-table-wrap\"><table class=\"md-table\"><thead><tr>";
       for (const cell of headerCells) {
         html += `<th>${cell}</th>`;
       }
@@ -65,7 +65,7 @@ function renderMarkdown(text) {
         }
         html += "</tr>";
       }
-      html += "</tbody></table>";
+      html += "</tbody></table></div>";
       continue;
     }
     if (/^#{3}\s+/.test(line)) {
