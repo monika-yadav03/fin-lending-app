@@ -4,10 +4,10 @@ export const runtime = "nodejs"
 
 function getBedrockClient() {
  return new BedrockAgentRuntimeClient({
-  region: process.env.AWS_REGION,
+  region: process.env.FIN_REGION,
   credentials: {
-   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+   accessKeyId: process.env.FIN_ACCESS_KEY_ID,
+   secretAccessKey: process.env.FIN_SECRET_ACCESS_KEY
   }
  })
 }
