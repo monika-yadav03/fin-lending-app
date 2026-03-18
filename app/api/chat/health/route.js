@@ -6,8 +6,18 @@ import {
 export const runtime = "nodejs";
 
 function getBedrockClient() {
+  const hasStaticCreds =
+    !!process.env.AWS_ACCESS_KEY_ID && !!process.env.AWS_SECRET_ACCESS_KEY;
   return new BedrockAgentRuntimeClient({
-    region: process.env.FIN_REGION || "us-east-1",
+    region: process.env.FIN_REGION,
+    ...(hasStaticCreds
+      ? {
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+          },
+        }
+      : {}),
   });
 }
 
@@ -43,9 +53,27 @@ export async function GET() {
 
     return Response.json({ ok: true });
   } catch (error) {
-    console.log("Bedrock health error", error);
+    const errName = error?.name || "UnknownError";
+    const errMessage = error?.message || "Unknown error";
+    const errCode = error?.$metadata?.httpStatusCode;
+    const errRequestId = error?.$metadata?.requestId;
+    console.log("Bedrock health error", {
+      name: errName,
+      message: errMessage,
+      httpStatusCode: errCode,
+      requestId: errRequestId,
+    });
     return Response.json(
-      { ok: false, error: "Bedrock error" },
+      {
+        ok: false,
+        error: "Bedrock error",
+        details: {
+          name: errName,
+          message: errMessage,
+          httpStatusCode: errCode,
+          requestId: errRequestId,
+        },
+      },
       { status: 500 },
     );
   }
