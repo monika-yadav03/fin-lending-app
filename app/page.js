@@ -12,10 +12,12 @@ function escapeHtml(text) {
 }
 
 function renderMarkdown(text) {
-  const lines = escapeHtml(text).split(/\r?\n/);
+  const cleaned = text.replace(/\*\*/g, "");
+  const lines = cleaned.split(/\r?\n/);
   let html = "";
   let inUl = false;
   let inOl = false;
+  const labelMatch = /^(Summary|Key Points|Risks\/Assumptions|Risks|Assumptions|Next Steps|Table)\s*:\s*(.*)$/i;
 
   const closeLists = () => {
     if (inUl) {
@@ -41,6 +43,7 @@ function renderMarkdown(text) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const safeLine = escapeHtml(line);
 
     if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
       closeLists();
@@ -60,8 +63,10 @@ function renderMarkdown(text) {
       html += "</tr></thead><tbody>";
       for (const row of bodyRows) {
         html += "<tr>";
-        for (const cell of row) {
-          html += `<td>${cell}</td>`;
+        for (let c = 0; c < row.length; c++) {
+          const cell = row[c];
+          const label = headerCells[c] || "";
+          html += `<td data-label="${label}">${cell}</td>`;
         }
         html += "</tr>";
       }
@@ -70,17 +75,17 @@ function renderMarkdown(text) {
     }
     if (/^#{3}\s+/.test(line)) {
       closeLists();
-      html += `<h3>${line.replace(/^#{3}\s+/, "")}</h3>`;
+      html += `<h3>${escapeHtml(line.replace(/^#{3}\s+/, ""))}</h3>`;
       continue;
     }
     if (/^#{2}\s+/.test(line)) {
       closeLists();
-      html += `<h2>${line.replace(/^#{2}\s+/, "")}</h2>`;
+      html += `<h2>${escapeHtml(line.replace(/^#{2}\s+/, ""))}</h2>`;
       continue;
     }
     if (/^#\s+/.test(line)) {
       closeLists();
-      html += `<h1>${line.replace(/^#\s+/, "")}</h1>`;
+      html += `<h1>${escapeHtml(line.replace(/^#\s+/, ""))}</h1>`;
       continue;
     }
     if (/^(\*|-|•)\s+/.test(line)) {
@@ -89,7 +94,7 @@ function renderMarkdown(text) {
         html += "<ul>";
         inUl = true;
       }
-      html += `<li>${line.replace(/^(\*|-|•)\s+/, "")}</li>`;
+      html += `<li>${escapeHtml(line.replace(/^(\*|-|•)\s+/, ""))}</li>`;
       continue;
     }
     if (/^\d+\.\s+/.test(line)) {
@@ -98,7 +103,7 @@ function renderMarkdown(text) {
         html += "<ol>";
         inOl = true;
       }
-      html += `<li>${line.replace(/^\d+\.\s+/, "")}</li>`;
+      html += `<li>${escapeHtml(line.replace(/^\d+\.\s+/, ""))}</li>`;
       continue;
     }
     if (line.trim() === "") {
@@ -107,7 +112,14 @@ function renderMarkdown(text) {
       continue;
     }
     closeLists();
-    html += `<p>${line}</p>`;
+    const labelParts = line.match(labelMatch);
+    if (labelParts) {
+      const label = escapeHtml(labelParts[1]);
+      const rest = escapeHtml(labelParts[2] || "");
+      html += `<p><span class="md-label">${label}:</span> ${rest}</p>`;
+    } else {
+      html += `<p>${safeLine}</p>`;
+    }
   }
 
   closeLists();

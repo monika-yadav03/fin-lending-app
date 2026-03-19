@@ -44,7 +44,7 @@ Format in Markdown:
 - Key Points (bullets)
 - Risks/Assumptions (if relevant)
 - Next Steps (bullets)
-- Table (only if useful)
+- Table (ONLY if it directly helps answer the question; otherwise omit)
 `;
     const promptText = `
 ${systemPrompt}
