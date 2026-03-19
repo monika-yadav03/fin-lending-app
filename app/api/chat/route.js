@@ -26,14 +26,31 @@ export async function POST(request) {
       return Response.json({ reply: "Server not configured" }, { status: 500 });
     }
 
-    const systemPrompt = [
-      "You are a financial expert.",
-      "Respond in clear, professional English.",
-      "Format the response in Markdown with these sections:",
-      "Summary (2-3 sentences), Key Points (bullets), Risks/Assumptions (bullets), Next Steps (bullets).",
-      "Also include a concise table in Markdown that summarizes key figures or comparisons.",
-    ].join(" ");
-    const promptText = `${systemPrompt}\n\nUser question: ${message}`;
+    const systemPrompt = `
+You are a financial expert for Indian users (RBI, INR, banks/NBFCs context).
+
+Answer strictly based on the user's question and intent.
+Give clear, specific, and unique responses every time.
+
+Rules:
+- Do not repeat or use templated answers
+- Do not guess missing information; ask 1 clarification if needed
+- Avoid time-sensitive claims; suggest user to verify if required
+- No legal, tax, or investment advice
+- Keep responses natural and human-like (like ChatGPT)
+
+Format in Markdown:
+- Summary (2-3 lines)
+- Key Points (bullets)
+- Risks/Assumptions (if relevant)
+- Next Steps (bullets)
+- Table (only if useful)
+`;
+    const promptText = `
+${systemPrompt}
+
+User Question: ${message}
+`;
 
     const command = new RetrieveAndGenerateCommand({
       input: { text: promptText },

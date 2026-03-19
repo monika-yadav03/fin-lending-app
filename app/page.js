@@ -277,12 +277,19 @@ export default function Home() {
                   className={`bubble ${msg.who === "user" ? "user" : "ai"}`}
                 >
                   {msg.who === "ai" ? (
-                    <div
-                      className="ai-content"
-                      dangerouslySetInnerHTML={{
-                        __html: renderMarkdown(msg.text || ""),
-                      }}
-                    />
+                    <div className="ai-row">
+                      <div className="ai-avatar" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" role="img">
+                          <path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6-4.6-1.9 4.6-1.9L12 3z" />
+                        </svg>
+                      </div>
+                      <div
+                        className="ai-content"
+                        dangerouslySetInnerHTML={{
+                          __html: renderMarkdown(msg.text || ""),
+                        }}
+                      />
+                    </div>
                   ) : (
                     msg.text
                   )}
@@ -292,6 +299,11 @@ export default function Home() {
             </div>
           ) : null}
           <div className={`input-bar ${inputNudge ? "input-nudge" : ""}`}>
+            <button className="icon-btn" type="button" aria-label="Add">
+              <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                <path d="M11 4h2v16h-2zM4 11h16v2H4z" />
+              </svg>
+            </button>
             <input
               value={input}
               placeholder="Ask anything"
@@ -300,9 +312,23 @@ export default function Home() {
                 if (event.key === "Enter") sendMessage();
               }}
             />
-            <button onClick={sendMessage} disabled={loading}>
-              Send
-            </button>
+            <div className="input-actions">
+              <button className="icon-btn" type="button" aria-label="Voice">
+                <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zm-5 9a5 5 0 0 0 10 0h2a7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12h2z" />
+                </svg>
+              </button>
+              <button
+                className="send-btn"
+                onClick={sendMessage}
+                disabled={loading}
+                aria-label="Send"
+              >
+                <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                  <path d="M3.4 20.4l17.6-8.4L3.4 3.6l-.4 7 10 1.4-10 1.4.4 7z" />
+                </svg>
+              </button>
+            </div>
           </div>
         </section>
       </main>
