@@ -153,6 +153,37 @@ export default function Home() {
     [chats, activeChatId],
   );
   const hasMessages = (activeChat?.messages || []).length > 0;
+  const isMobileRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(max-width: 900px)");
+    const syncSidebarState = (event) => {
+      const isMobile = event.matches;
+      isMobileRef.current = isMobile;
+      setSidebarOpen(!isMobile);
+      setShowHistory(!isMobile);
+    };
+
+    syncSidebarState(mediaQuery);
+
+    const handleChange = (event) => syncSidebarState(event);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+    } else if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(handleChange);
+    }
+
+    return () => {
+      if (typeof mediaQuery.removeEventListener === "function") {
+        mediaQuery.removeEventListener("change", handleChange);
+      } else if (typeof mediaQuery.removeListener === "function") {
+        mediaQuery.removeListener(handleChange);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!chatBoxRef.current) return;
@@ -198,6 +229,9 @@ export default function Home() {
           chat.id === chatId ? { ...chat, messages: updatedMessages } : chat,
         ),
       );
+      if (isMobileRef.current) {
+        setSidebarOpen(false);
+      }
       setInputNudge(true);
     } catch (err) {
       const updatedMessages = [
@@ -265,7 +299,10 @@ export default function Home() {
     setActiveChatId(null);
     setInput("");
     setInputNudge(false);
-    setShowHistory(false);
+    setShowHistory(!isMobileRef.current);
+    if (isMobileRef.current) {
+      setSidebarOpen(false);
+    }
   }
 
   const suggestedPrompts = [
@@ -341,6 +378,9 @@ export default function Home() {
                   onClick={() => {
                     setActiveChatId(chat.id);
                     setShowHistory(true);
+                    if (isMobileRef.current) {
+                      setSidebarOpen(false);
+                    }
                   }}
                 >
                   <div style={{ fontWeight: 600 }}>{chat.title}</div>

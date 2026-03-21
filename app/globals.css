@@ -1,4 +1,4 @@
-﻿@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
 :root {
   --bg: #2b323a;
@@ -129,7 +129,6 @@ body {
 .sidebar .card {
   color: #ffffff;
 }
-
 
 .main-area {
   background: var(--panel);
@@ -607,11 +606,12 @@ body {
 
 @media (max-width: 900px) {
   .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 20px;
-    gap: 16px;
-    width: 100%;
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    gap: 14px;
+    width: min(72vw, 260px);
+    max-width: 260px;
+    box-shadow: 16px 0 40px rgba(0, 0, 0, 0.35);
   }
 
   .sidebar-toggle {
@@ -622,10 +622,12 @@ body {
   .main-area {
     margin-left: 0;
     width: 100%;
+    min-height: 100svh;
   }
 
   .hero {
-    padding: 28px 16px 20px;
+    padding: 76px 16px 20px;
+    max-width: 100%;
   }
 
   .hero h2 {
@@ -642,15 +644,25 @@ body {
     max-width: 1000px;
     padding: 12px 16px 24px;
   }
+
+  .input-bar,
+  .input-bar.input-bar-start {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .suggested-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 700px) {
   .main {
-    min-height: 100vh;
+    min-height: 100svh;
   }
 
   .sidebar {
-    padding: 16px;
+    padding: 14px;
   }
 
   .brand {
@@ -658,15 +670,13 @@ body {
   }
 
   .brand h1 {
-    font-size: 20px;
+    font-size: 18px;
   }
-
 
   .new-chat-btn {
     width: 34px;
     height: 34px;
   }
-
 
   .btn {
     padding: 8px 14px;
@@ -681,10 +691,10 @@ body {
   }
 
   .chat-box {
-    max-height: calc(100vh - 210px);
+    max-height: calc(100svh - 230px);
     width: 100%;
     max-width: 1000px;
-    padding: 12px 16px 24px;
+    padding: 12px 8px 24px;
   }
 
   .bubble {
@@ -702,6 +712,10 @@ body {
     max-width: 1000px;
   }
 
+  .input-bar.input-bar-start {
+    margin-top: 24px;
+  }
+
   .icon-btn {
     width: 34px;
     height: 34px;
@@ -715,7 +729,9 @@ body {
 
 @media (max-width: 520px) {
   .sidebar {
-    gap: 12px;
+    gap: 10px;
+    width: min(68vw, 230px);
+    padding: 12px;
   }
 
   .history-header p {
@@ -723,23 +739,27 @@ body {
   }
 
   .card {
-    padding: 12px;
+    padding: 10px;
     border-radius: 12px;
   }
 
   .hero {
-    padding: 24px 16px 18px;
+    padding: 72px 12px 18px;
   }
 
   .hero h2 {
     font-size: 20px;
   }
 
+  .hero p {
+    font-size: 15px;
+  }
+
   .chat-box {
-    max-height: calc(100vh - 200px);
+    max-height: calc(100svh - 220px);
     width: 100%;
     max-width: 1000px;
-    padding: 12px 16px 24px;
+    padding: 8px 4px 20px;
   }
 
   .new-chat-btn {
@@ -753,6 +773,7 @@ body {
     flex-wrap: nowrap;
     gap: 8px;
     border-radius: 26px;
+    padding: 8px 10px;
   }
 
   .icon-btn {
@@ -763,5 +784,15 @@ body {
   .send-btn {
     width: 34px;
     height: 34px;
+  }
+
+  .bubble {
+    max-width: 94%;
+    font-size: 15px;
+  }
+
+  .input-bar input,
+  .ai-content {
+    font-size: 15px;
   }
 }
