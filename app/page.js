@@ -17,7 +17,8 @@ function renderMarkdown(text) {
   let html = "";
   let inUl = false;
   let inOl = false;
-  const labelMatch = /^(Summary|Key Points|Risks\/Assumptions|Risks|Assumptions|Next Steps|Table)\s*:\s*(.*)$/i;
+  const labelMatch =
+    /^(Summary|Key Points|Risks\/Assumptions|Risks|Assumptions|Next Steps|Table)\s*:\s*(.*)$/i;
 
   const closeLists = () => {
     if (inUl) {
@@ -45,18 +46,26 @@ function renderMarkdown(text) {
     const line = lines[i];
     const safeLine = escapeHtml(line);
 
-    if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+    if (
+      isTableRow(line) &&
+      i + 1 < lines.length &&
+      isTableSeparator(lines[i + 1])
+    ) {
       closeLists();
       const headerCells = parseRow(line);
       i += 2; // skip separator
       const bodyRows = [];
-      while (i < lines.length && lines[i].trim() !== "" && isTableRow(lines[i])) {
+      while (
+        i < lines.length &&
+        lines[i].trim() !== "" &&
+        isTableRow(lines[i])
+      ) {
         bodyRows.push(parseRow(lines[i]));
         i++;
       }
       i--; // for-loop will increment
 
-      html += "<div class=\"md-table-wrap\"><table class=\"md-table\"><thead><tr>";
+      html += '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
       for (const cell of headerCells) {
         html += `<th>${cell}</th>`;
       }
@@ -133,10 +142,15 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [inputNudge, setInputNudge] = useState(false);
   const [showHistory, setShowHistory] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [listening, setListening] = useState(false);
+  const fileInputRef = useRef(null);
   const chatBoxRef = useRef(null);
+  const speechRef = useRef(null);
+  const inputRef = useRef(null);
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId),
-    [chats, activeChatId]
+    [chats, activeChatId],
   );
   const hasMessages = (activeChat?.messages || []).length > 0;
 
@@ -157,6 +171,7 @@ export default function Home() {
 
     const chatId = activeChatId || `chat-${Date.now()}`;
     const nextChat = activeChat || { id: chatId, title: text, messages: [] };
+    const previousMessages = nextChat.messages;
     const nextMessages = [...nextChat.messages, { who: "user", text }];
     const nextChats = chats.filter((chat) => chat.id !== chatId);
     setChats([{ ...nextChat, messages: nextMessages }, ...nextChats]);
@@ -168,7 +183,10 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({
+          message: text,
+          history: previousMessages,
+        }),
       });
       const data = await res.json();
       const updatedMessages = [
@@ -177,8 +195,8 @@ export default function Home() {
       ];
       setChats((prev) =>
         prev.map((chat) =>
-          chat.id === chatId ? { ...chat, messages: updatedMessages } : chat
-        )
+          chat.id === chatId ? { ...chat, messages: updatedMessages } : chat,
+        ),
       );
       setInputNudge(true);
     } catch (err) {
@@ -188,14 +206,59 @@ export default function Home() {
       ];
       setChats((prev) =>
         prev.map((chat) =>
-          chat.id === chatId ? { ...chat, messages: updatedMessages } : chat
-        )
+          chat.id === chatId ? { ...chat, messages: updatedMessages } : chat,
+        ),
       );
       setInputNudge(true);
     } finally {
       setLoading(false);
       setTimeout(() => setInputNudge(false), 300);
     }
+  }
+
+  function toggleVoiceInput() {
+    const SpeechRecognition =
+      typeof window !== "undefined" &&
+      (window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (!SpeechRecognition) {
+      setInput("Voice input not supported in this browser.");
+      return;
+    }
+
+    if (listening && speechRef.current) {
+      speechRef.current.stop();
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      setInput((prev) => {
+        const base = prev && !prev.includes("Voice input not supported")
+          ? prev.replace(/\s+$/, "")
+          : "";
+        return base ? `${base} ${transcript}` : transcript;
+      });
+    };
+
+    recognition.onerror = () => {
+      setListening(false);
+    };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+
+    speechRef.current = recognition;
+    setListening(true);
+    recognition.start();
   }
 
   function startNewChat() {
@@ -205,19 +268,35 @@ export default function Home() {
     setShowHistory(false);
   }
 
+  const suggestedPrompts = [
+    "Best loan options for CIBIL 680?",
+    "Home loan vs LAP: what is better?",
+    "Need ₹20L business loan, turnover ₹60L",
+    "Compare NBFC vs bank for quick approval",
+  ];
+
   return (
     <div className="main">
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? "open" : "collapsed"}`}>
         <div className="brand">
           <h1>FinLending</h1>
-          <button className="btn primary" onClick={startNewChat}>
-            New
+          <button
+            className="new-chat-btn"
+            onClick={startNewChat}
+            aria-label="New chat"
+            type="button"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 20h4l11-11-4-4L4 16v4zm13.7-13.7-4-4 1.4-1.4a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4l-1.4 1.4z" />
+            </svg>
           </button>
         </div>
 
         <div>
           <div className="history-header">
-            <p style={{ color: "var(--muted)", fontSize: 12, letterSpacing: 2 }}>
+            <p
+              style={{ color: "var(--muted)", fontSize: 12, letterSpacing: 2 }}
+            >
               Chat History
             </p>
             <button
@@ -236,7 +315,10 @@ export default function Home() {
             }}
           >
             {chats.length === 0 ? (
-              <div className="card" style={{ color: "var(--muted)", fontSize: 12 }}>
+              <div
+                className="card"
+                style={{ color: "var(--muted)", fontSize: 12 }}
+              >
                 No chats yet
               </div>
             ) : !showHistory ? (
@@ -267,20 +349,45 @@ export default function Home() {
             )}
           </div>
         </div>
-
-        <div className="card footer-card">
-          <div style={{ color: "var(--accent)", fontSize: 12 }}>o</div>
-          <div style={{ marginTop: 6, fontWeight: 600 }}>Free Trial Active</div>
-          <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 6 }}>
-            Your team's free trial ends in 29 days. Contact your owner.
-          </div>
-        </div>
       </aside>
 
-      <main className="main-area">
+      <main
+        className={`main-area ${sidebarOpen ? "sidebar-open" : "sidebar-collapsed"}`}
+      >
+        <button
+          className="sidebar-toggle"
+          type="button"
+          aria-label="Toggle sidebar"
+          onClick={() => setSidebarOpen((prev) => !prev)}
+        >
+          <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <path d="M9 5v14" />
+          </svg>
+        </button>
         <section className="hero">
           <h2>Hello there!</h2>
           <p>How can I help you FinLending today?</p>
+          {!hasMessages ? (
+            <div className="suggested">
+              <p className="suggested-title">Try one of these</p>
+              <div className="suggested-grid">
+                {suggestedPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    className="suggested-card"
+                    type="button"
+                    onClick={() => {
+                      setInput(prompt);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           {hasMessages ? (
             <div className="chat-box" ref={chatBoxRef}>
               {(activeChat?.messages || []).map((msg, index) => (
@@ -289,19 +396,12 @@ export default function Home() {
                   className={`bubble ${msg.who === "user" ? "user" : "ai"}`}
                 >
                   {msg.who === "ai" ? (
-                    <div className="ai-row">
-                      <div className="ai-avatar" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" role="img">
-                          <path d="M12 3l1.9 4.6 4.6 1.9-4.6 1.9L12 16l-1.9-4.6-4.6-1.9 4.6-1.9L12 3z" />
-                        </svg>
-                      </div>
-                      <div
-                        className="ai-content"
-                        dangerouslySetInnerHTML={{
-                          __html: renderMarkdown(msg.text || ""),
-                        }}
-                      />
-                    </div>
+                    <div
+                      className="ai-content"
+                      dangerouslySetInnerHTML={{
+                        __html: renderMarkdown(msg.text || ""),
+                      }}
+                    />
                   ) : (
                     msg.text
                   )}
@@ -310,13 +410,30 @@ export default function Home() {
               {loading ? <div className="bubble">Thinking...</div> : null}
             </div>
           ) : null}
-          <div className={`input-bar ${inputNudge ? "input-nudge" : ""}`}>
-            <button className="icon-btn" type="button" aria-label="Add">
+          <div
+            className={`input-bar ${inputNudge ? "input-nudge" : ""} ${
+              hasMessages ? "" : "input-bar-start"
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="file-input"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+            <button
+              className="icon-btn"
+              type="button"
+              aria-label="Attach file"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
                 <path d="M11 4h2v16h-2zM4 11h16v2H4z" />
               </svg>
             </button>
             <input
+              ref={inputRef}
               value={input}
               placeholder="Ask anything"
               onChange={(event) => setInput(event.target.value)}
@@ -325,7 +442,12 @@ export default function Home() {
               }}
             />
             <div className="input-actions">
-              <button className="icon-btn" type="button" aria-label="Voice">
+              <button
+                className={`icon-btn ${listening ? "icon-btn-active" : ""}`}
+                type="button"
+                aria-label="Voice"
+                onClick={toggleVoiceInput}
+              >
                 <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
                   <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zm-5 9a5 5 0 0 0 10 0h2a7 7 0 0 1-6 6.93V21h-2v-2.07A7 7 0 0 1 5 12h2z" />
                 </svg>
