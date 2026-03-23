@@ -1,4 +1,5 @@
 import { generateReply, getConfiguredProvider } from "./provider";
+import { retrieveRelevantKnowledge } from "../../../lib/rag";
 
 export const runtime = "nodejs";
 
@@ -33,10 +34,18 @@ export async function POST(request) {
       )
       .join("\n");
 
+    const relevantKnowledge = retrieveRelevantKnowledge(message, recentHistory);
+    const knowledgeContext = relevantKnowledge.length
+      ? relevantKnowledge
+          .map((item) => `- ${item.text}`)
+          .join("\n")
+      : "No matching records found in the provided loan data.";
+
     const systemPrompt = `
 You are a smart and practical loan advisor for Indian users.
 
 Your goal is to sound like a real human loan consultant and guide the user step by step.
+You must answer using the provided loan data knowledge first.
 
 Conversation Behavior:
 - Always use the conversation history to continue naturally from the last turn
@@ -46,6 +55,8 @@ Conversation Behavior:
 - Prefer asking questions in a helpful conversational sentence, for example: "Sure, are you looking for a home loan, personal loan, business loan, car loan, or LAP?"
 - When enough key details are available, give a practical recommendation even if a few minor details are still missing
 - If details are still insufficient for a responsible recommendation, ask the next best question instead of guessing
+- Do not invent lender rules or values that are not present in the provided loan data
+- If the data does not contain enough information, clearly say that the available loan sheet does not provide that exact detail
 
 Loan Discovery Rules:
 - For home loan style queries, usually clarify major details like loan amount, property location, income/employment profile, and property stage if needed
@@ -87,6 +98,9 @@ Advisory Rules:
 `;
 
     const promptText = `
+Knowledge Base Matches:
+${knowledgeContext}
+
 Conversation History:
 ${recentHistory || "No previous conversation."}
 

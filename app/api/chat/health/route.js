@@ -1,4 +1,5 @@
 import { getConfiguredProvider, runHealthCheck } from "../provider";
+import { getKnowledgeStatus } from "../../../../lib/rag";
 
 export const runtime = "nodejs";
 
@@ -11,9 +12,18 @@ export async function GET() {
       );
     }
 
+    const knowledgeStatus = getKnowledgeStatus();
+
+    if (!knowledgeStatus.ok) {
+      return Response.json(
+        { ok: false, error: "Loan knowledge data not configured" },
+        { status: 500 },
+      );
+    }
+
     await runHealthCheck();
 
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, knowledgeRecords: knowledgeStatus.records });
   } catch (error) {
     const errName = error?.name || "UnknownError";
     const errMessage = error?.message || "Unknown error";
