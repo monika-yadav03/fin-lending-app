@@ -36,6 +36,24 @@ function cleanEnvValue(value) {
   return normalized ? normalized : "";
 }
 
+function isHostedInAzure() {
+  return Boolean(
+    cleanEnvValue(process.env.WEBSITE_SITE_NAME) ||
+      cleanEnvValue(process.env.WEBSITE_INSTANCE_ID) ||
+      cleanEnvValue(process.env.AzureWebJobsStorage) ||
+      cleanEnvValue(process.env.IDENTITY_ENDPOINT)
+  );
+}
+
+function isStaticWebAppsRuntime() {
+  return Boolean(
+    cleanEnvValue(process.env.SWA_CLI_DEPLOYMENT_TOKEN) ||
+      cleanEnvValue(process.env.SWA_RUNTIME_CONFIG) ||
+      cleanEnvValue(process.env.STATIC_WEB_APP) ||
+      (isHostedInAzure() && cleanEnvValue(process.env.WEBSITE_HOSTNAME).includes(".azurestaticapps.net"))
+  );
+}
+
 function createConfigError(message) {
   const error = new Error(message);
   error.name = "ConfigError";
@@ -188,8 +206,13 @@ function normalizeProviderError(error) {
     /CredentialUnavailableError/i.test(message);
 
   if (isAuthChainError || /DefaultAzureCredential/i.test(message)) {
+    const hostedMessage = isStaticWebAppsRuntime()
+      ? "Azure Foundry agent requires Microsoft Entra authentication. Azure Static Web Apps managed backends do not expose managed identity to server code, so 'az login' will not fix the deployed app. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal in Static Web App environment variables, or move this API to App Service / Azure Functions / Container Apps with managed identity."
+      : isHostedInAzure()
+        ? "Azure Foundry agent requires Microsoft Entra authentication. This Azure-hosted app cannot use local 'az login'. Configure managed identity or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal."
+        : "Azure Foundry agent requires Microsoft Entra authentication. Install Azure CLI and run 'az login', or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal.";
     const normalized = new Error(
-      "Azure Foundry agent requires Microsoft Entra authentication. Install Azure CLI and run 'az login', or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal."
+      hostedMessage
     );
     normalized.name = "AzureFoundryAuthError";
     normalized.statusCode = 401;
