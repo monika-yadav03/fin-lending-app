@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 function escapeHtml(text) {
   return text
@@ -42,7 +43,7 @@ function renderMarkdown(text) {
       .split("|")
       .map((cell) => cell.trim());
 
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     const safeLine = escapeHtml(line);
 
@@ -61,9 +62,9 @@ function renderMarkdown(text) {
         isTableRow(lines[i])
       ) {
         bodyRows.push(parseRow(lines[i]));
-        i++;
+        i += 1;
       }
-      i--;
+      i -= 1;
 
       html += '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
       for (const cell of headerCells) {
@@ -72,7 +73,7 @@ function renderMarkdown(text) {
       html += "</tr></thead><tbody>";
       for (const row of bodyRows) {
         html += "<tr>";
-        for (let c = 0; c < row.length; c++) {
+        for (let c = 0; c < row.length; c += 1) {
           const cell = row[c];
           const label = headerCells[c] || "";
           html += `<td data-label="${label}">${cell}</td>`;
@@ -136,6 +137,7 @@ function renderMarkdown(text) {
 }
 
 export default function FinLendingApp({ phoneNumber = "" }) {
+  const router = useRouter();
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [input, setInput] = useState("");
@@ -144,19 +146,22 @@ export default function FinLendingApp({ phoneNumber = "" }) {
   const [showHistory, setShowHistory] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [listening, setListening] = useState(false);
-  const fileInputRef = useRef(null);
   const chatBoxRef = useRef(null);
   const speechRef = useRef(null);
   const inputRef = useRef(null);
+  const profileMenuRef = useRef(null);
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId),
     [chats, activeChatId],
   );
   const hasMessages = (activeChat?.messages || []).length > 0;
   const isMobileRef = useRef(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") {
+      return;
+    }
 
     const mediaQuery = window.matchMedia("(max-width: 900px)");
     const syncSidebarState = (event) => {
@@ -186,7 +191,32 @@ export default function FinLendingApp({ phoneNumber = "" }) {
   }, []);
 
   useEffect(() => {
-    if (!chatBoxRef.current) return;
+    function handleOutsideClick(event) {
+      if (!profileMenuRef.current?.contains(event.target)) {
+        setProfileOpen(false);
+      }
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        setProfileOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!chatBoxRef.current) {
+      return;
+    }
+
     const container = chatBoxRef.current;
     requestAnimationFrame(() => {
       container.scrollTo({
@@ -198,10 +228,17 @@ export default function FinLendingApp({ phoneNumber = "" }) {
 
   async function sendMessage() {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading) {
+      return;
+    }
 
     const chatId = activeChatId || `chat-${Date.now()}`;
-    const nextChat = activeChat || { id: chatId, title: text, messages: [] };
+    const nextChat = activeChat || {
+      id: chatId,
+      title: text,
+      messages: [],
+      conversationId: null,
+    };
     const previousMessages = nextChat.messages;
     const nextMessages = [...nextChat.messages, { who: "user", text }];
     const nextChats = chats.filter((chat) => chat.id !== chatId);
@@ -215,6 +252,7 @@ export default function FinLendingApp({ phoneNumber = "" }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          conversationId: nextChat.conversationId || null,
           message: text,
           history: previousMessages,
         }),
@@ -226,7 +264,13 @@ export default function FinLendingApp({ phoneNumber = "" }) {
       ];
       setChats((prev) =>
         prev.map((chat) =>
-          chat.id === chatId ? { ...chat, messages: updatedMessages } : chat,
+          chat.id === chatId
+            ? {
+                ...chat,
+                messages: updatedMessages,
+                conversationId: data.conversationId || chat.conversationId || null,
+              }
+            : chat,
         ),
       );
       if (isMobileRef.current) {
@@ -271,7 +315,7 @@ export default function FinLendingApp({ phoneNumber = "" }) {
 
     recognition.onresult = (event) => {
       let transcript = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
         transcript += event.results[i][0].transcript;
       }
       setInput((prev) => {
@@ -304,6 +348,12 @@ export default function FinLendingApp({ phoneNumber = "" }) {
     if (isMobileRef.current) {
       setSidebarOpen(false);
     }
+  }
+
+  async function logout() {
+    await fetch("/api/logout", { method: "POST" });
+    router.replace("/login");
+    router.refresh();
   }
 
   const suggestedPrompts = [
@@ -340,6 +390,7 @@ export default function FinLendingApp({ phoneNumber = "" }) {
             <button
               className="history-toggle"
               onClick={() => setShowHistory((prev) => !prev)}
+              type="button"
             >
               {showHistory ? "^" : "v"}
             </button>
@@ -406,6 +457,38 @@ export default function FinLendingApp({ phoneNumber = "" }) {
             <path d="M9 5v14" />
           </svg>
         </button>
+        <div className="profile-menu profile-menu-floating" ref={profileMenuRef}>
+          <button
+            className="profile-trigger"
+            type="button"
+            aria-label="Open profile menu"
+            aria-haspopup="menu"
+            aria-expanded={profileOpen}
+            onClick={() => setProfileOpen((prev) => !prev)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+              <path d="M5 20a7 7 0 0 1 14 0" />
+            </svg>
+          </button>
+          <div
+            className={`profile-dropdown ${profileOpen ? "open" : ""}`}
+            role="menu"
+          >
+            <div className="profile-dropdown-label">
+              <span>Signed in</span>
+              <strong>{phoneNumber || "Verified user"}</strong>
+            </div>
+            <button
+              className="profile-dropdown-item"
+              type="button"
+              role="menuitem"
+              onClick={logout}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
         <section className="hero">
           <h2>Hello there!</h2>
           <p>How can I help you FinLending today?</p>
@@ -457,29 +540,14 @@ export default function FinLendingApp({ phoneNumber = "" }) {
             }`}
           >
             <input
-              ref={fileInputRef}
-              type="file"
-              className="file-input"
-              aria-hidden="true"
-              tabIndex={-1}
-            />
-            <button
-              className="icon-btn"
-              type="button"
-              aria-label="Attach file"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
-                <path d="M11 4h2v16h-2zM4 11h16v2H4z" />
-              </svg>
-            </button>
-            <input
               ref={inputRef}
               value={input}
               placeholder="Ask anything"
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") sendMessage();
+                if (event.key === "Enter") {
+                  sendMessage();
+                }
               }}
             />
             <div className="input-actions">

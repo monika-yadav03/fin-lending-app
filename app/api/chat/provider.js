@@ -1,119 +1,277 @@
-export const runtime = "nodejs";
+import { AIProjectClient } from "@azure/ai-projects";
+import { DefaultAzureCredential } from "@azure/identity";
 
-function getAzureConfig() {
-  const apiKey = process.env.AZURE_OPENAI_API_KEY;
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME;
-  const apiVersion =
-    process.env.AZURE_OPENAI_API_VERSION || "2024-10-21";
+let cachedProjectClient = null;
+let cachedOpenAIClient = null;
+let cachedProjectEndpoint = "";
 
-  if (!apiKey || !endpoint || !deployment) {
+function trimTrailingSlash(value = "") {
+  return String(value).replace(/\/+$/, "");
+}
+
+function cleanEnvValue(value) {
+  const normalized = String(value || "").trim();
+  return normalized ? normalized : "";
+}
+
+function createConfigError(message) {
+  const error = new Error(message);
+  error.name = "ConfigError";
+  error.statusCode = 500;
+  return error;
+}
+
+function parseAgentIdentifier(value) {
+  const raw = cleanEnvValue(value);
+
+  if (!raw) {
+    return { name: "", version: "" };
+  }
+
+  const [name, version = ""] = raw.split(":");
+  return {
+    name: cleanEnvValue(name),
+    version: cleanEnvValue(version),
+  };
+}
+
+function getFoundryConfig() {
+  const projectEndpoint = trimTrailingSlash(
+    cleanEnvValue(
+      process.env.AZURE_AI_PROJECT_ENDPOINT ||
+        process.env.AZURE_EXISTING_AIPROJECT_ENDPOINT
+    )
+  );
+  const parsedAgent = parseAgentIdentifier(
+    process.env.AZURE_AI_AGENT_ID || process.env.AZURE_EXISTING_AGENT_ID
+  );
+  const agentName = cleanEnvValue(process.env.AZURE_AI_AGENT_NAME) || parsedAgent.name;
+  const agentVersion =
+    cleanEnvValue(process.env.AZURE_AI_AGENT_VERSION) || parsedAgent.version;
+
+  if (!projectEndpoint || !agentName) {
     return null;
   }
 
   return {
-    apiKey,
-    endpoint: endpoint.replace(/\/+$/, ""),
-    deployment,
-    apiVersion,
+    projectEndpoint,
+    agentName,
+    agentVersion,
   };
 }
 
-export function getConfiguredProvider() {
-  return getAzureConfig();
-}
-
-function getContentText(content) {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item === "string") {
-          return item;
-        }
-
-        if (item?.type === "text") {
-          return item.text || "";
-        }
-
-        return "";
-      })
-      .join("")
-      .trim();
-  }
-
-  return "";
-}
-
-async function runAzureChat(messages) {
-  const config = getAzureConfig();
-
+function validateFoundryConfig(config) {
   if (!config) {
-    const error = new Error("Server not configured");
-    error.statusCode = 500;
-    throw error;
-  }
-
-  const response = await fetch(
-    `${config.endpoint}/openai/deployments/${config.deployment}/chat/completions?api-version=${config.apiVersion}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": config.apiKey,
-      },
-      body: JSON.stringify({
-        messages,
-        temperature: 0.7,
-        max_tokens: 800,
-      }),
-    },
-  );
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const error = new Error(
-      data?.error?.message || `Azure OpenAI request failed with ${response.status}`,
+    throw createConfigError(
+      "Azure Foundry agent is not configured. Set AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_AGENT_NAME or AZURE_AI_AGENT_ID."
     );
-    error.statusCode = response.status;
-    error.details = data?.error;
-    throw error;
   }
 
-  const replyText = getContentText(data?.choices?.[0]?.message?.content);
-
-  if (!replyText) {
-    const error = new Error("No response from AI");
-    error.statusCode = 502;
-    throw error;
+  if (!/^https:\/\/[^/]+\.services\.ai\.azure\.com\/api\/projects\/[^/]+$/i.test(config.projectEndpoint)) {
+    throw createConfigError(
+      "Invalid AZURE_AI_PROJECT_ENDPOINT. Use format: https://<resource>.services.ai.azure.com/api/projects/<project-name>"
+    );
   }
-
-  return replyText;
 }
 
-export async function generateReply({
-  promptText,
-  systemPrompt,
-}) {
-  return runAzureChat([
-    { role: "system", content: systemPrompt.trim() },
-    { role: "user", content: promptText.trim() },
-  ]);
+function getProjectClient() {
+  const config = getFoundryConfig();
+  validateFoundryConfig(config);
+
+  if (!cachedProjectClient || cachedProjectEndpoint !== config.projectEndpoint) {
+    const credential = new DefaultAzureCredential();
+    cachedProjectClient = new AIProjectClient(config.projectEndpoint, credential, {
+      userAgentOptions: {
+        userAgentPrefix: "finlending",
+      },
+    });
+    cachedOpenAIClient = null;
+    cachedProjectEndpoint = config.projectEndpoint;
+  }
+
+  return cachedProjectClient;
+}
+
+function getOpenAIClient() {
+  if (!cachedOpenAIClient) {
+    cachedOpenAIClient = getProjectClient().getOpenAIClient();
+  }
+
+  return cachedOpenAIClient;
+}
+
+function toConversationItems(history, userMessage) {
+  const seededHistory = Array.isArray(history) ? history : [];
+  const items = seededHistory
+    .filter(
+      (item) =>
+        item &&
+        (item.who === "user" || item.who === "ai") &&
+        typeof item.text === "string" &&
+        item.text.trim()
+    )
+    .map((item) => ({
+      type: "message",
+      role: item.who === "user" ? "user" : "assistant",
+      content: item.text.trim(),
+    }));
+
+  items.push({
+    type: "message",
+    role: "user",
+    content: String(userMessage || "").trim(),
+  });
+
+  return items;
+}
+
+function extractReplyText(response) {
+  if (typeof response?.output_text === "string" && response.output_text.trim()) {
+    return response.output_text.trim();
+  }
+
+  const outputItems = Array.isArray(response?.output) ? response.output : [];
+  const texts = [];
+
+  for (const item of outputItems) {
+    if (item?.type !== "message") {
+      continue;
+    }
+
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const part of content) {
+      const text =
+        typeof part?.text === "string"
+          ? part.text
+          : typeof part?.output_text === "string"
+            ? part.output_text
+            : "";
+
+      if (text.trim()) {
+        texts.push(text.trim());
+      }
+    }
+  }
+
+  return texts.join("\n").trim();
+}
+
+function normalizeProviderError(error) {
+  const message = String(error?.message || "Azure Foundry request failed");
+  const helpText = [];
+  const isAuthChainError =
+    /ChainedTokenCredential authentication failed/i.test(message) ||
+    /AggregateAuthenticationError/i.test(String(error?.name || "")) ||
+    /CredentialUnavailableError/i.test(message);
+
+  if (isAuthChainError || /DefaultAzureCredential/i.test(message)) {
+    const normalized = new Error(
+      "Azure Foundry agent requires Microsoft Entra authentication. Install Azure CLI and run 'az login', or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal."
+    );
+    normalized.name = "AzureFoundryAuthError";
+    normalized.statusCode = 401;
+    normalized.details = error;
+    return normalized;
+  }
+
+  if (/403|Forbidden/i.test(message)) {
+    helpText.push("Verify your account has access to the Azure AI Project and Agent.");
+  }
+
+  const normalized = new Error(
+    helpText.length > 0 ? `${message} ${helpText.join(" ")}` : message
+  );
+  normalized.name = error?.name || "AzureFoundryError";
+  normalized.statusCode =
+    Number(error?.statusCode) ||
+    Number(error?.code) ||
+    Number(error?.response?.status) ||
+    500;
+  normalized.details = error;
+  return normalized;
+}
+
+export function getConfiguredProvider() {
+  return getFoundryConfig() ? "azure_foundry_agent" : null;
 }
 
 export async function runHealthCheck() {
-  return runAzureChat([
-    {
-      role: "system",
-      content: "You are a health check assistant. Reply with OK only.",
-    },
-    {
-      role: "user",
-      content: "Health check",
-    },
-  ]);
+  const config = getFoundryConfig();
+  validateFoundryConfig(config);
+
+  try {
+    const projectClient = getProjectClient();
+
+    if (config.agentVersion) {
+      await projectClient.agents.getVersion(config.agentName, config.agentVersion);
+      return;
+    }
+
+    await projectClient.agents.get(config.agentName);
+  } catch (error) {
+    throw normalizeProviderError(error);
+  }
+}
+
+export async function generateReplyWithSource({
+  userMessage,
+  conversationId,
+  history,
+}) {
+  const config = getFoundryConfig();
+  validateFoundryConfig(config);
+
+  const normalizedMessage = String(userMessage || "").trim();
+  if (!normalizedMessage) {
+    throw createConfigError("Please provide a message.");
+  }
+
+  try {
+    const openAIClient = getOpenAIClient();
+    let currentConversationId = cleanEnvValue(conversationId);
+
+    if (currentConversationId) {
+      await openAIClient.conversations.items.create(currentConversationId, {
+        items: [
+          {
+            type: "message",
+            role: "user",
+            content: normalizedMessage,
+          },
+        ],
+      });
+    } else {
+      const conversation = await openAIClient.conversations.create({
+        items: toConversationItems(history, normalizedMessage),
+      });
+      currentConversationId = conversation.id;
+    }
+
+    const response = await openAIClient.responses.create(
+      {
+        conversation: currentConversationId,
+      },
+      {
+        body: {
+          agent: {
+            name: config.agentName,
+            type: "agent_reference",
+          },
+        },
+      }
+    );
+
+    const reply = extractReplyText(response);
+    if (!reply) {
+      throw new Error("No response from Azure Foundry agent");
+    }
+
+    return {
+      reply,
+      conversationId: currentConversationId,
+      source: "azure_foundry_agent",
+    };
+  } catch (error) {
+    throw normalizeProviderError(error);
+  }
 }

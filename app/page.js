@@ -1,5 +1,9 @@
-import FinLendingApp from "../components/finlending-app";
+import { redirect } from "next/navigation";
 
-export default function HomePage() {
-  return <FinLendingApp />;
+import { getSessionFromCookies } from "../lib/auth";
+
+export default async function HomePage() {
+  const session = await getSessionFromCookies();
+
+  redirect(session ? "/dashboard" : "/login");
 }

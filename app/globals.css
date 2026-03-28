@@ -1,4 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --bg: #2b323a;
@@ -30,7 +32,6 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-size: 16px;
   line-height: 1.6;
 }
@@ -87,6 +88,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.brand-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .brand h1 {
@@ -198,6 +205,141 @@ body {
   min-height: 0;
   min-width: 0;
   overflow-x: hidden;
+}
+
+.hero-topbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-bottom: 28px;
+  padding-right: 8px;
+}
+
+.profile-menu {
+  position: relative;
+}
+
+.profile-menu-floating {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 55;
+}
+
+.profile-trigger {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1px solid #3a424a;
+  background: #232930;
+  color: #e6edf3;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.profile-trigger:hover {
+  border-color: #515b66;
+  background: #282f37;
+  transform: translateY(-1px);
+}
+
+.profile-trigger svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+.profile-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 220px;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid #313841;
+  background: rgba(27, 32, 38, 0.96);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+  z-index: 60;
+  backdrop-filter: blur(12px);
+}
+
+.profile-dropdown.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.profile-dropdown-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.profile-dropdown-label span {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1.6px;
+}
+
+.profile-dropdown-label strong {
+  color: #ffffff;
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.profile-dropdown-item {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: #f1f5f9;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 180ms ease,
+    color 180ms ease;
+}
+
+.profile-dropdown-item:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+}
+
+.account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 0;
 }
 
 .hero h2 {
@@ -365,7 +507,6 @@ body {
   padding: 0;
   line-height: 1.7;
   font-size: 16px;
-  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-weight: 500;
   color: #ffffff;
   letter-spacing: 0;
@@ -638,6 +779,11 @@ body {
     font-size: 14px;
   }
 
+  .profile-menu-floating {
+    top: 16px;
+    right: 16px;
+  }
+
   .chat-box {
     max-height: calc(100vh - 220px);
     width: 100%;
@@ -791,6 +937,14 @@ body {
     font-size: 15px;
   }
 
+  .otp-group {
+    gap: 8px;
+  }
+
+  .otp-box {
+    font-size: 18px !important;
+  }
+
   .input-bar input,
   .ai-content {
     font-size: 15px;
@@ -861,6 +1015,42 @@ body {
 .auth-form input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(0, 209, 178, 0.16);
+}
+
+.otp-group {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.otp-box {
+  width: 100%;
+  padding: 14px 0 !important;
+  text-align: center !important;
+  font-size: 22px !important;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-link {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+}
+
+.auth-link:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 .auth-submit,
