@@ -1,9 +1,31 @@
 import { AIProjectClient } from "@azure/ai-projects";
 import { DefaultAzureCredential } from "@azure/identity";
+import { existsSync } from "node:fs";
 
 let cachedProjectClient = null;
 let cachedOpenAIClient = null;
 let cachedProjectEndpoint = "";
+
+function ensureAzureCliOnPath() {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const currentPath = String(process.env.PATH || "");
+  const candidates = [
+    "C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin",
+    "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin",
+  ];
+  const missingCandidates = candidates.filter(
+    (candidate) => existsSync(candidate) && !currentPath.includes(candidate)
+  );
+
+  if (missingCandidates.length === 0) {
+    return;
+  }
+
+  process.env.PATH = [currentPath, ...missingCandidates].filter(Boolean).join(";");
+}
 
 function trimTrailingSlash(value = "") {
   return String(value).replace(/\/+$/, "");
@@ -77,6 +99,7 @@ function validateFoundryConfig(config) {
 function getProjectClient() {
   const config = getFoundryConfig();
   validateFoundryConfig(config);
+  ensureAzureCliOnPath();
 
   if (!cachedProjectClient || cachedProjectEndpoint !== config.projectEndpoint) {
     const credential = new DefaultAzureCredential();
