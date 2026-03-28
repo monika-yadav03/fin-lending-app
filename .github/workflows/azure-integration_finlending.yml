@@ -1,12 +1,9 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
+# Legacy App Service workflow kept for manual use only.
+# The active automatic deployment for this repo now targets Azure Static Web Apps.
 
 name: Build and deploy Node.js app to Azure Web App - FinLending
 
 on:
-  push:
-    branches:
-      - azure-integration
   workflow_dispatch:
 
 jobs:
