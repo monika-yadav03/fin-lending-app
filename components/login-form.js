@@ -14,6 +14,45 @@ function formatPhoneInput(value) {
   return `${digits.slice(0, 5)} ${digits.slice(5)}`;
 }
 
+async function readApiResponse(response) {
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+
+  const text = (await response.text()).trim();
+  return text ? { error: text } : {};
+}
+
+function getErrorMessage(error, fallback) {
+  const message = String(error?.message || "").trim();
+
+  if (!message) {
+    return fallback;
+  }
+
+  if (/failed to fetch|load failed|networkerror/i.test(message)) {
+    return "We couldn't reach the OTP service. Please check your connection and try again.";
+  }
+
+  return message;
+}
+
+function getErrorHelp(message) {
+  const normalized = String(message || "");
+
+  if (/twilio trial account|verified in twilio|verified phone numbers/i.test(normalized)) {
+    return "This environment can send OTPs only to phone numbers that are verified in Twilio.";
+  }
+
+  if (/sms provider credentials are invalid|configured sender number cannot send sms/i.test(normalized)) {
+    return "An administrator needs to update the SMS provider settings in Azure before OTP login will work.";
+  }
+
+  return "";
+}
+
 export default function LoginForm() {
   const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -48,6 +87,7 @@ export default function LoginForm() {
   }, [secondsLeft]);
 
   const otpValue = useMemo(() => otp.join(""), [otp]);
+  const errorHelp = useMemo(() => getErrorHelp(error), [error]);
 
   function updateOtpAt(index, value) {
     const digit = value.replace(/\D/g, "").slice(-1);
@@ -84,7 +124,7 @@ export default function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber: `+91${phoneNumber.replace(/\D/g, "")}` }),
       });
-      const data = await response.json();
+      const data = await readApiResponse(response);
 
       if (!response.ok) {
         throw new Error(data?.error || "OTP send failed.");
@@ -98,7 +138,7 @@ export default function LoginForm() {
       setRemainingResends(3);
       requestAnimationFrame(() => inputRefs.current[0]?.focus());
     } catch (err) {
-      setError(err.message);
+      setError(getErrorMessage(err, "Unable to send OTP right now."));
     } finally {
       setLoading(false);
     }
@@ -123,7 +163,7 @@ export default function LoginForm() {
           otpCode: otpValue,
         }),
       });
-      const data = await response.json();
+      const data = await readApiResponse(response);
 
       if (!response.ok) {
         throw new Error(data?.error || "OTP verification failed.");
@@ -132,7 +172,7 @@ export default function LoginForm() {
       router.replace(data.redirectTo || "/dashboard");
       router.refresh();
     } catch (err) {
-      setError(err.message);
+      setError(getErrorMessage(err, "Unable to verify OTP right now."));
     } finally {
       setLoading(false);
     }
@@ -155,7 +195,7 @@ export default function LoginForm() {
           phoneNumber: normalizedPhone,
         }),
       });
-      const data = await response.json();
+      const data = await readApiResponse(response);
 
       if (!response.ok) {
         if (data?.retryAfterSeconds) {
@@ -170,7 +210,7 @@ export default function LoginForm() {
       setMessage(`New OTP sent to ${data.phoneNumber}`);
       requestAnimationFrame(() => inputRefs.current[0]?.focus());
     } catch (err) {
-      setError(err.message);
+      setError(getErrorMessage(err, "Unable to resend OTP right now."));
     } finally {
       setResendLoading(false);
     }
@@ -255,6 +295,7 @@ export default function LoginForm() {
           ) : null}
 
           {error ? <div className="auth-error">{error}</div> : null}
+          {errorHelp ? <div className="auth-help">{errorHelp}</div> : null}
           {message ? <div className="auth-success">{message}</div> : null}
 
           <button className="auth-submit" type="submit" disabled={loading}>
