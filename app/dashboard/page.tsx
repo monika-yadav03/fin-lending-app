@@ -15,5 +15,5 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  return <FinLendingApp phoneNumber={session.phoneNumber} />;
+  return <FinLendingApp phoneNumber={String(session.phoneNumber || "")} />;
 }

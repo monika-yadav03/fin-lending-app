@@ -226,8 +226,9 @@ export default function FinLendingApp({ phoneNumber = "" }) {
     });
   }, [activeChat?.messages?.length]);
 
-  async function sendMessage() {
-    const text = input.trim();
+  async function sendMessage(options = {}) {
+    const text = String(options.backendText ?? input).trim();
+    const visibleText = String(options.visibleText ?? text).trim();
     if (!text || loading) {
       return;
     }
@@ -235,12 +236,12 @@ export default function FinLendingApp({ phoneNumber = "" }) {
     const chatId = activeChatId || `chat-${Date.now()}`;
     const nextChat = activeChat || {
       id: chatId,
-      title: text,
+      title: visibleText,
       messages: [],
       conversationId: null,
     };
     const previousMessages = nextChat.messages;
-    const nextMessages = [...nextChat.messages, { who: "user", text }];
+    const nextMessages = [...nextChat.messages, { who: "user", text: visibleText }];
     const nextChats = chats.filter((chat) => chat.id !== chatId);
     setChats([{ ...nextChat, messages: nextMessages }, ...nextChats]);
     setActiveChatId(chatId);
@@ -252,15 +253,23 @@ export default function FinLendingApp({ phoneNumber = "" }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          threadId: nextChat.conversationId || null,
           conversationId: nextChat.conversationId || null,
           message: text,
           history: previousMessages,
         }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || data?.reply || "Server error");
+      }
       const updatedMessages = [
         ...nextMessages,
-        { who: "ai", text: data.reply || "No response" },
+        {
+          who: "ai",
+          text:
+            data?.reply || data?.error || "The assistant did not return a reply.",
+        },
       ];
       setChats((prev) =>
         prev.map((chat) =>
@@ -268,7 +277,8 @@ export default function FinLendingApp({ phoneNumber = "" }) {
             ? {
                 ...chat,
                 messages: updatedMessages,
-                conversationId: data.conversationId || chat.conversationId || null,
+                conversationId:
+                  data.conversationId || data.threadId || chat.conversationId || null,
               }
             : chat,
         ),
@@ -277,10 +287,13 @@ export default function FinLendingApp({ phoneNumber = "" }) {
         setSidebarOpen(false);
       }
       setInputNudge(true);
-    } catch {
+    } catch (error) {
       const updatedMessages = [
         ...nextMessages,
-        { who: "ai", text: "Server error" },
+        {
+          who: "ai",
+          text: error?.message || "Server error",
+        },
       ];
       setChats((prev) =>
         prev.map((chat) =>
@@ -356,11 +369,11 @@ export default function FinLendingApp({ phoneNumber = "" }) {
     router.refresh();
   }
 
-  const suggestedPrompts = [
-    "Best loan options for CIBIL 680?",
-    "Home loan vs LAP: what is better?",
-    "Need Rs20L business loan, turnover Rs60L",
-    "Compare NBFC vs bank for quick approval",
+  const productOptions = [
+    "Loan Against Property (LAP)",
+    "Home Loan",
+    "Business Loan",
+    "Working Capital Limit CGTMSE",
   ];
 
   return (
@@ -494,19 +507,21 @@ export default function FinLendingApp({ phoneNumber = "" }) {
           <p>How can I help you FinLending today?</p>
           {!hasMessages ? (
             <div className="suggested">
-              <p className="suggested-title">Try one of these</p>
+              <p className="suggested-title">CHOOSE THE PRODUCT</p>
               <div className="suggested-grid">
-                {suggestedPrompts.map((prompt) => (
+                {productOptions.map((product) => (
                   <button
-                    key={prompt}
+                    key={product}
                     className="suggested-card"
                     type="button"
-                    onClick={() => {
-                      setInput(prompt);
-                      inputRef.current?.focus();
-                    }}
+                    onClick={() =>
+                      sendMessage({
+                        backendText: `I have selected ${product}. Please start the data collection process.`,
+                        visibleText: product,
+                      })
+                    }
                   >
-                    {prompt}
+                    {product}
                   </button>
                 ))}
               </div>
@@ -531,7 +546,7 @@ export default function FinLendingApp({ phoneNumber = "" }) {
                   )}
                 </div>
               ))}
-              {loading ? <div className="bubble">Thinking...</div> : null}
+              {loading ? <div className="bubble">Analyzing</div> : null}
             </div>
           ) : null}
           <div
