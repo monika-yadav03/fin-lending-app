@@ -4,7 +4,7 @@ import "@azure/openai/types";
 import { AzureOpenAI } from "openai";
 
 import { getSessionFromCookies } from "../../../lib/auth";
-import { generateReplyWithSource } from "./provider";
+import { generateReplyWithSource, getConfiguredProvider } from "./provider";
 
 export const runtime = "nodejs";
 
@@ -213,10 +213,16 @@ function normalizeError(error: unknown) {
         ? error.status
         : 500;
 
-  const message =
+  const rawMessage =
     error instanceof Error && error.message
       ? error.message
-      : "Unable to complete the assistant request.";
+      : "Unable to complete the AI request.";
+
+  const message =
+    /ownership verification failure/i.test(rawMessage) &&
+    /same AOAI resource/i.test(rawMessage)
+      ? "The configured Azure OpenAI assistant is referencing files or vector stores that belong to a different Azure OpenAI resource. Re-upload those files on the same resource as AZURE_OPENAI_ENDPOINT and recreate the assistant there, or remove AZURE_OPENAI_ASSISTANT_ID to use the Azure Foundry agent configuration instead."
+      : rawMessage;
 
   return {
     statusCode,
@@ -263,6 +269,10 @@ export async function POST(request: Request) {
         { error: "Please provide a message to continue the conversation." },
         { status: 400 },
       );
+    }
+
+    if (getConfiguredProvider() === "azure_foundry_agent") {
+      return await handleFoundryFallback(body);
     }
 
     if (!hasAssistantsConfig()) {
