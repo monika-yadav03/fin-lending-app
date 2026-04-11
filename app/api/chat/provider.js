@@ -2,9 +2,9 @@ import { AIProjectClient } from "@azure/ai-projects";
 import { DefaultAzureCredential } from "@azure/identity";
 import { existsSync } from "node:fs";
 
-let cachedProjectClient = null;
-let cachedOpenAIClient = null;
-let cachedProjectEndpoint = "";
+const projectClientCache = new Map();
+const openAIClientCache = new Map();
+const MAX_MCP_APPROVAL_ROUNDS = 8;
 
 function ensureAzureCliOnPath() {
   if (process.platform !== "win32") {
@@ -34,6 +34,18 @@ function trimTrailingSlash(value = "") {
 function cleanEnvValue(value) {
   const normalized = String(value || "").trim();
   return normalized ? normalized : "";
+}
+
+function readFirstEnv(names = []) {
+  for (const name of names) {
+    const value = cleanEnvValue(process.env[name]);
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
 }
 
 function isHostedInAzure() {
@@ -75,19 +87,41 @@ function parseAgentIdentifier(value) {
   };
 }
 
-function getFoundryConfig() {
+function looksLikeUrl(value) {
+  return /^https?:\/\//i.test(cleanEnvValue(value));
+}
+
+function getFoundryConfig(options = {}) {
+  const projectEndpointEnvNames = Array.isArray(options.projectEndpointEnvNames)
+    ? options.projectEndpointEnvNames
+    : ["AZURE_AI_PROJECT_ENDPOINT", "AZURE_EXISTING_AIPROJECT_ENDPOINT"];
+  const agentIdEnvNames = Array.isArray(options.agentIdEnvNames)
+    ? options.agentIdEnvNames
+    : ["AZURE_AI_AGENT_ID", "AZURE_EXISTING_AGENT_ID"];
+  const agentNameEnvNames = Array.isArray(options.agentNameEnvNames)
+    ? options.agentNameEnvNames
+    : ["AZURE_AI_AGENT_NAME"];
+  const agentVersionEnvNames = Array.isArray(options.agentVersionEnvNames)
+    ? options.agentVersionEnvNames
+    : ["AZURE_AI_AGENT_VERSION"];
   const projectEndpoint = trimTrailingSlash(
-    cleanEnvValue(
-      process.env.AZURE_AI_PROJECT_ENDPOINT ||
-        process.env.AZURE_EXISTING_AIPROJECT_ENDPOINT
-    )
+    readFirstEnv(projectEndpointEnvNames)
   );
-  const parsedAgent = parseAgentIdentifier(
-    process.env.AZURE_AI_AGENT_ID || process.env.AZURE_EXISTING_AGENT_ID
-  );
-  const agentName = cleanEnvValue(process.env.AZURE_AI_AGENT_NAME) || parsedAgent.name;
-  const agentVersion =
-    cleanEnvValue(process.env.AZURE_AI_AGENT_VERSION) || parsedAgent.version;
+  const parsedAgent = parseAgentIdentifier(readFirstEnv(agentIdEnvNames));
+  const agentName = readFirstEnv(agentNameEnvNames) || parsedAgent.name;
+  const agentVersion = readFirstEnv(agentVersionEnvNames) || parsedAgent.version;
+
+  if (looksLikeUrl(agentName)) {
+    throw createConfigError(
+      `${cleanEnvValue(options.configLabel) || "Azure Foundry agent"} name looks invalid. Put the project URL in the project endpoint variable, not in the agent name variable.`,
+    );
+  }
+
+  if (looksLikeUrl(agentVersion)) {
+    throw createConfigError(
+      `${cleanEnvValue(options.configLabel) || "Azure Foundry agent"} version looks invalid. Put the project URL in the project endpoint variable, not in the agent version variable.`,
+    );
+  }
 
   if (!projectEndpoint || !agentName) {
     return null;
@@ -100,45 +134,50 @@ function getFoundryConfig() {
   };
 }
 
-function validateFoundryConfig(config) {
+function validateFoundryConfig(config, options = {}) {
+  const configLabel = cleanEnvValue(options.configLabel) || "Azure Foundry agent";
+
   if (!config) {
     throw createConfigError(
-      "Azure Foundry agent is not configured. Set AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_AGENT_NAME or AZURE_AI_AGENT_ID."
+      `${configLabel} is not configured. Set AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_AGENT_NAME or AZURE_AI_AGENT_ID.`,
     );
   }
 
   if (!/^https:\/\/[^/]+\.services\.ai\.azure\.com\/api\/projects\/[^/]+$/i.test(config.projectEndpoint)) {
     throw createConfigError(
-      "Invalid AZURE_AI_PROJECT_ENDPOINT. Use format: https://<resource>.services.ai.azure.com/api/projects/<project-name>"
+      `Invalid ${configLabel} project endpoint. Use format: https://<resource>.services.ai.azure.com/api/projects/<project-name>`,
     );
   }
 }
 
-function getProjectClient() {
-  const config = getFoundryConfig();
-  validateFoundryConfig(config);
+function getProjectClient(config, options = {}) {
+  validateFoundryConfig(config, options);
   ensureAzureCliOnPath();
 
-  if (!cachedProjectClient || cachedProjectEndpoint !== config.projectEndpoint) {
+  if (!projectClientCache.has(config.projectEndpoint)) {
     const credential = new DefaultAzureCredential();
-    cachedProjectClient = new AIProjectClient(config.projectEndpoint, credential, {
+    const projectClient = new AIProjectClient(config.projectEndpoint, credential, {
       userAgentOptions: {
         userAgentPrefix: "finlending",
       },
     });
-    cachedOpenAIClient = null;
-    cachedProjectEndpoint = config.projectEndpoint;
+    projectClientCache.set(config.projectEndpoint, projectClient);
   }
 
-  return cachedProjectClient;
+  return projectClientCache.get(config.projectEndpoint);
 }
 
-function getOpenAIClient() {
-  if (!cachedOpenAIClient) {
-    cachedOpenAIClient = getProjectClient().getOpenAIClient();
+function getOpenAIClient(config, options = {}) {
+  validateFoundryConfig(config, options);
+
+  if (!openAIClientCache.has(config.projectEndpoint)) {
+    openAIClientCache.set(
+      config.projectEndpoint,
+      getProjectClient(config, options).getOpenAIClient(),
+    );
   }
 
-  return cachedOpenAIClient;
+  return openAIClientCache.get(config.projectEndpoint);
 }
 
 function toConversationItems(history, userMessage) {
@@ -184,6 +223,8 @@ function extractReplyText(response) {
       const text =
         typeof part?.text === "string"
           ? part.text
+          : typeof part?.text?.value === "string"
+            ? part.text.value
           : typeof part?.output_text === "string"
             ? part.output_text
             : "";
@@ -195,6 +236,96 @@ function extractReplyText(response) {
   }
 
   return texts.join("\n").trim();
+}
+
+function buildAgentReference(config) {
+  const agentReference = {
+    name: config.agentName,
+    type: "agent_reference",
+  };
+
+  if (config.agentVersion) {
+    agentReference.version = config.agentVersion;
+  }
+
+  return agentReference;
+}
+
+function describeResponse(response) {
+  const outputItems = Array.isArray(response?.output) ? response.output : [];
+  const outputTypes = outputItems
+    .map((item) => String(item?.type || "unknown"))
+    .filter(Boolean);
+  const status = typeof response?.status === "string" ? response.status : "unknown";
+  const responseId = typeof response?.id === "string" ? response.id : "unknown";
+  const errorMessage =
+    typeof response?.error?.message === "string" ? response.error.message : "";
+
+  const parts = [
+    `response_id=${responseId}`,
+    `status=${status}`,
+    outputTypes.length > 0 ? `output_types=${outputTypes.join(",")}` : "output_types=none",
+  ];
+
+  if (errorMessage) {
+    parts.push(`error=${errorMessage}`);
+  }
+
+  return parts.join("; ");
+}
+
+function hasOutputType(response, type) {
+  const outputItems = Array.isArray(response?.output) ? response.output : [];
+  return outputItems.some((item) => item?.type === type);
+}
+
+function getMcpApprovalRequests(response) {
+  const outputItems = Array.isArray(response?.output) ? response.output : [];
+
+  return outputItems.filter(
+    (item) =>
+      item &&
+      item.type === "mcp_approval_request" &&
+      typeof item.approval_request_id === "string" &&
+      item.approval_request_id.trim()
+  );
+}
+
+function buildMcpApprovalResponses(response) {
+  return getMcpApprovalRequests(response).map((item) => ({
+    type: "mcp_approval_response",
+    approval_request_id: item.approval_request_id,
+    approve: true,
+    reason: `Auto-approved MCP request for ${item.server_label || "configured knowledge server"}.`,
+  }));
+}
+
+async function continueResponseWithApprovals(openAIClient, response, config) {
+  let currentResponse = response;
+
+  for (let attempt = 0; attempt < MAX_MCP_APPROVAL_ROUNDS; attempt += 1) {
+    const approvals = buildMcpApprovalResponses(currentResponse);
+
+    if (approvals.length === 0) {
+      return currentResponse;
+    }
+
+    currentResponse = await openAIClient.responses.create(
+      {
+        input: approvals,
+        previous_response_id: currentResponse.id,
+      },
+      {
+        body: {
+          agent: buildAgentReference(config),
+        },
+      }
+    );
+  }
+
+  throw new Error(
+    "The Azure Foundry agent kept requesting MCP approvals and did not finish after multiple approval rounds.",
+  );
 }
 
 function normalizeProviderError(error) {
@@ -237,16 +368,16 @@ function normalizeProviderError(error) {
   return normalized;
 }
 
-export function getConfiguredProvider() {
-  return getFoundryConfig() ? "azure_foundry_agent" : null;
+export function getConfiguredProvider(options = {}) {
+  return getFoundryConfig(options) ? "azure_foundry_agent" : null;
 }
 
-export async function runHealthCheck() {
-  const config = getFoundryConfig();
-  validateFoundryConfig(config);
+export async function runHealthCheck(options = {}) {
+  const config = getFoundryConfig(options);
+  validateFoundryConfig(config, options);
 
   try {
-    const projectClient = getProjectClient();
+    const projectClient = getProjectClient(config, options);
 
     if (config.agentVersion) {
       await projectClient.agents.getVersion(config.agentName, config.agentVersion);
@@ -263,9 +394,10 @@ export async function generateReplyWithSource({
   userMessage,
   conversationId,
   history,
+  configOptions = {},
 }) {
-  const config = getFoundryConfig();
-  validateFoundryConfig(config);
+  const config = getFoundryConfig(configOptions);
+  validateFoundryConfig(config, configOptions);
 
   const normalizedMessage = String(userMessage || "").trim();
   if (!normalizedMessage) {
@@ -273,7 +405,7 @@ export async function generateReplyWithSource({
   }
 
   try {
-    const openAIClient = getOpenAIClient();
+    const openAIClient = getOpenAIClient(config, configOptions);
     let currentConversationId = cleanEnvValue(conversationId);
 
     if (currentConversationId) {
@@ -299,17 +431,25 @@ export async function generateReplyWithSource({
       },
       {
         body: {
-          agent: {
-            name: config.agentName,
-            type: "agent_reference",
-          },
+          agent: buildAgentReference(config),
         },
       }
     );
 
-    const reply = extractReplyText(response);
+    const finalizedResponse = hasOutputType(response, "mcp_approval_request")
+      ? await continueResponseWithApprovals(openAIClient, response, config)
+      : response;
+    const reply = extractReplyText(finalizedResponse);
     if (!reply) {
-      throw new Error("No response from Azure Foundry agent");
+      if (hasOutputType(finalizedResponse, "mcp_approval_request")) {
+        throw new Error(
+          "The Azure Foundry agent requested MCP tool approval. This app currently supports text replies only and does not complete the MCP approval flow. Remove MCP tools from the MSME agent, or configure the agent to answer using only uploaded PDF knowledge.",
+        );
+      }
+
+      throw new Error(
+        `No response from Azure Foundry agent. ${describeResponse(finalizedResponse)}`,
+      );
     }
 
     return {

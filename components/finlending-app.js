@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -391,6 +392,20 @@ export default function FinLendingApp({ phoneNumber = "" }) {
               <path d="M4 20h4l11-11-4-4L4 16v4zm13.7-13.7-4-4 1.4-1.4a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4l-1.4 1.4z" />
             </svg>
           </button>
+        </div>
+
+        <div className="sidebar-shortcuts">
+          <Link href="/msme-subsidy" className="sidebar-nav-item">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 20V8l8-4 8 4v12" />
+              <path d="M9 20v-4h6v4" />
+              <path d="M9 10h.01" />
+              <path d="M9 13h.01" />
+              <path d="M15 10h.01" />
+              <path d="M15 13h.01" />
+            </svg>
+            <span>MSME Subsidy Finder</span>
+          </Link>
         </div>
 
         <div>

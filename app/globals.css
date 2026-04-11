@@ -126,6 +126,52 @@ body {
   color: #eef2f7;
 }
 
+.sidebar-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid #313841;
+  background: linear-gradient(135deg, rgba(35, 41, 48, 0.96), rgba(29, 34, 40, 0.98));
+  color: #ffffff;
+  text-decoration: none;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.sidebar-nav-item:hover {
+  border-color: #3a424b;
+  background: linear-gradient(135deg, rgba(39, 45, 52, 0.98), rgba(31, 37, 43, 0.98));
+  transform: translateY(-1px);
+  box-shadow: 0 20px 36px rgba(0, 0, 0, 0.28);
+}
+
+.sidebar-nav-item svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  flex-shrink: 0;
+}
+
+.sidebar-nav-item span {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .card {
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -911,6 +957,11 @@ body {
   .new-chat-btn {
     width: 32px;
     height: 32px;
+  }
+
+  .sidebar-nav-item {
+    padding: 12px 14px;
+    border-radius: 16px;
   }
 
   .input-bar {
