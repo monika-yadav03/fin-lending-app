@@ -23,7 +23,17 @@ async function handleSend() {
       }),
     });
 
-    const data = await res.json();
+    const raw = await res.text();
+
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = {
+        error: raw || "Backend call failure",
+      };
+    }
 
     if (!res.ok) {
       throw new Error(data?.error || "Something went wrong.");
