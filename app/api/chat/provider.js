@@ -7,146 +7,115 @@ const openAIClientCache = new Map();
 const MAX_MCP_APPROVAL_ROUNDS = 8;
 
 function ensureAzureCliOnPath() {
-  if (process.platform !== "win32") {
-    return;
-  }
+  if (process.platform !== "win32") return;
 
   const currentPath = String(process.env.PATH || "");
   const candidates = [
     "C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin",
     "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin",
   ];
-  const missingCandidates = candidates.filter(
-    (candidate) => existsSync(candidate) && !currentPath.includes(candidate),
+
+  const missing = candidates.filter(
+    (item) => existsSync(item) && !currentPath.includes(item),
   );
 
-  if (missingCandidates.length === 0) {
-    return;
+  if (missing.length > 0) {
+    process.env.PATH = [currentPath, ...missing].join(";");
   }
-
-  process.env.PATH = [currentPath, ...missingCandidates]
-    .filter(Boolean)
-    .join(";");
 }
 
-function trimTrailingSlash(value = "") {
+function clean(value) {
+  const text = String(value || "").trim();
+  return text || "";
+}
+
+function trimSlash(value = "") {
   return String(value).replace(/\/+$/, "");
 }
 
-function cleanEnvValue(value) {
-  const normalized = String(value || "").trim();
-  return normalized ? normalized : "";
-}
-
-function readFirstEnv(names = []) {
+function readEnv(names = []) {
   for (const name of names) {
-    const value = cleanEnvValue(process.env[name]);
-
-    if (value) {
-      return value;
-    }
+    const value = clean(process.env[name]);
+    if (value) return value;
   }
-
   return "";
 }
 
 function isHostedInAzure() {
   return Boolean(
-    cleanEnvValue(process.env.WEBSITE_SITE_NAME) ||
-      cleanEnvValue(process.env.WEBSITE_INSTANCE_ID) ||
-      cleanEnvValue(process.env.AzureWebJobsStorage) ||
-      cleanEnvValue(process.env.IDENTITY_ENDPOINT),
+    clean(process.env.WEBSITE_SITE_NAME) ||
+      clean(process.env.WEBSITE_INSTANCE_ID) ||
+      clean(process.env.IDENTITY_ENDPOINT),
   );
 }
 
 function isStaticWebAppsRuntime() {
   return Boolean(
-    cleanEnvValue(process.env.SWA_CLI_DEPLOYMENT_TOKEN) ||
-      cleanEnvValue(process.env.SWA_RUNTIME_CONFIG) ||
-      cleanEnvValue(process.env.STATIC_WEB_APP) ||
+    clean(process.env.SWA_RUNTIME_CONFIG) ||
       (isHostedInAzure() &&
-        cleanEnvValue(process.env.WEBSITE_HOSTNAME).includes(
-          ".azurestaticapps.net",
-        )),
+        clean(process.env.WEBSITE_HOSTNAME).includes(".azurestaticapps.net")),
   );
 }
 
 function createConfigError(message) {
   const error = new Error(message);
-  error.name = "ConfigError";
   error.statusCode = 500;
   return error;
 }
 
-function parseAgentIdentifier(value) {
-  const raw = cleanEnvValue(value);
-
-  if (!raw) {
-    return { name: "", version: "" };
-  }
+function parseAgent(value) {
+  const raw = clean(value);
+  if (!raw) return { name: "", version: "" };
 
   const [name, version = ""] = raw.split(":");
   return {
-    name: cleanEnvValue(name),
-    version: cleanEnvValue(version),
+    name: clean(name),
+    version: clean(version),
   };
 }
 
-function looksLikeUrl(value) {
-  return /^https?:\/\//i.test(cleanEnvValue(value));
-}
-
 function getFoundryConfig(options = {}) {
-  const projectEndpointEnvNames = Array.isArray(options.projectEndpointEnvNames)
-    ? options.projectEndpointEnvNames
-    : ["AZURE_AI_PROJECT_ENDPOINT", "AZURE_EXISTING_AIPROJECT_ENDPOINT"];
-  const agentIdEnvNames = Array.isArray(options.agentIdEnvNames)
-    ? options.agentIdEnvNames
-    : ["AZURE_AI_AGENT_ID", "AZURE_EXISTING_AGENT_ID"];
-  const agentNameEnvNames = Array.isArray(options.agentNameEnvNames)
-    ? options.agentNameEnvNames
-    : ["AZURE_AI_AGENT_NAME"];
-  const agentVersionEnvNames = Array.isArray(options.agentVersionEnvNames)
-    ? options.agentVersionEnvNames
-    : ["AZURE_AI_AGENT_VERSION"];
-  const projectEndpoint = trimTrailingSlash(
-    readFirstEnv(projectEndpointEnvNames),
+  const endpoint = trimSlash(
+    readEnv(
+      options.projectEndpointEnvNames || [
+        "AZURE_AI_PROJECT_ENDPOINT",
+        "AZURE_EXISTING_AIPROJECT_ENDPOINT",
+      ],
+    ),
   );
-  const parsedAgent = parseAgentIdentifier(readFirstEnv(agentIdEnvNames));
-  const agentName = readFirstEnv(agentNameEnvNames) || parsedAgent.name;
+
+  const parsed = parseAgent(
+    readEnv(
+      options.agentIdEnvNames || [
+        "AZURE_AI_AGENT_ID",
+        "AZURE_EXISTING_AGENT_ID",
+      ],
+    ),
+  );
+
+  const agentName =
+    readEnv(options.agentNameEnvNames || ["AZURE_AI_AGENT_NAME"]) ||
+    parsed.name;
+
   const agentVersion =
-    readFirstEnv(agentVersionEnvNames) || parsedAgent.version;
+    readEnv(options.agentVersionEnvNames || ["AZURE_AI_AGENT_VERSION"]) ||
+    parsed.version;
 
-  if (looksLikeUrl(agentName)) {
-    throw createConfigError(
-      `${cleanEnvValue(options.configLabel) || "Azure Foundry agent"} name looks invalid. Put the project URL in the project endpoint variable, not in the agent name variable.`,
-    );
-  }
-
-  if (looksLikeUrl(agentVersion)) {
-    throw createConfigError(
-      `${cleanEnvValue(options.configLabel) || "Azure Foundry agent"} version looks invalid. Put the project URL in the project endpoint variable, not in the agent version variable.`,
-    );
-  }
-
-  if (!projectEndpoint || !agentName) {
-    return null;
-  }
+  if (!endpoint || !agentName) return null;
 
   return {
-    projectEndpoint,
+    projectEndpoint: endpoint,
     agentName,
     agentVersion,
   };
 }
 
-function validateFoundryConfig(config, options = {}) {
-  const configLabel =
-    cleanEnvValue(options.configLabel) || "Azure Foundry agent";
+function validateConfig(config, options = {}) {
+  const label = clean(options.configLabel) || "Azure Foundry agent";
 
   if (!config) {
     throw createConfigError(
-      `${configLabel} is not configured. Set AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_AGENT_NAME or AZURE_AI_AGENT_ID.`,
+      `${label} is not configured. Check environment variables.`,
     );
   }
 
@@ -156,34 +125,29 @@ function validateFoundryConfig(config, options = {}) {
     )
   ) {
     throw createConfigError(
-      `Invalid ${configLabel} project endpoint. Use format: https://<resource>.services.ai.azure.com/api/projects/<project-name>`,
+      `Invalid endpoint. Use format: https://<resource>.services.ai.azure.com/api/projects/<project-name>`,
     );
   }
 }
 
 function getProjectClient(config, options = {}) {
-  validateFoundryConfig(config, options);
+  validateConfig(config, options);
   ensureAzureCliOnPath();
 
   if (!projectClientCache.has(config.projectEndpoint)) {
-    const credential = new DefaultAzureCredential();
-    const projectClient = new AIProjectClient(
+    const client = new AIProjectClient(
       config.projectEndpoint,
-      credential,
-      {
-        userAgentOptions: {
-          userAgentPrefix: "finlending",
-        },
-      },
+      new DefaultAzureCredential(),
     );
-    projectClientCache.set(config.projectEndpoint, projectClient);
+
+    projectClientCache.set(config.projectEndpoint, client);
   }
 
   return projectClientCache.get(config.projectEndpoint);
 }
 
 function getOpenAIClient(config, options = {}) {
-  validateFoundryConfig(config, options);
+  validateConfig(config, options);
 
   if (!openAIClientCache.has(config.projectEndpoint)) {
     openAIClientCache.set(
@@ -196,59 +160,43 @@ function getOpenAIClient(config, options = {}) {
 }
 
 function toConversationItems(history, userMessage) {
-  const seededHistory = Array.isArray(history) ? history : [];
-  const items = seededHistory
-    .filter(
-      (item) =>
-        item &&
-        (item.who === "user" || item.who === "ai") &&
-        typeof item.text === "string" &&
-        item.text.trim(),
-    )
+  const list = Array.isArray(history) ? history : [];
+
+  const items = list
+    .filter((item) => item?.content && item?.role)
     .map((item) => ({
       type: "message",
-      role: item.who === "user" ? "user" : "assistant",
-      content: item.text.trim(),
+      role: item.role === "user" ? "user" : "assistant",
+      content: item.content,
     }));
 
   items.push({
     type: "message",
     role: "user",
-    content: String(userMessage || "").trim(),
+    content: userMessage,
   });
 
   return items;
 }
 
 function extractReplyText(response) {
-  if (
-    typeof response?.output_text === "string" &&
-    response.output_text.trim()
-  ) {
+  if (typeof response?.output_text === "string") {
     return response.output_text.trim();
   }
 
-  const outputItems = Array.isArray(response?.output) ? response.output : [];
+  const outputs = Array.isArray(response?.output) ? response.output : [];
   const texts = [];
 
-  for (const item of outputItems) {
-    if (item?.type !== "message") {
-      continue;
-    }
+  for (const item of outputs) {
+    if (item?.type !== "message") continue;
 
-    const content = Array.isArray(item.content) ? item.content : [];
-    for (const part of content) {
-      const text =
-        typeof part?.text === "string"
-          ? part.text
-          : typeof part?.text?.value === "string"
-            ? part.text.value
-            : typeof part?.output_text === "string"
-              ? part.output_text
-              : "";
+    const parts = Array.isArray(item.content) ? item.content : [];
 
-      if (text.trim()) {
-        texts.push(text.trim());
+    for (const part of parts) {
+      const text = part?.text || part?.text?.value || part?.output_text || "";
+
+      if (String(text).trim()) {
+        texts.push(String(text).trim());
       }
     }
   }
@@ -257,84 +205,48 @@ function extractReplyText(response) {
 }
 
 function buildAgentReference(config) {
-  const agentReference = {
+  const obj = {
     name: config.agentName,
     type: "agent_reference",
   };
 
   if (config.agentVersion) {
-    agentReference.version = config.agentVersion;
+    obj.version = config.agentVersion;
   }
 
-  return agentReference;
-}
-
-function describeResponse(response) {
-  const outputItems = Array.isArray(response?.output) ? response.output : [];
-  const outputTypes = outputItems
-    .map((item) => String(item?.type || "unknown"))
-    .filter(Boolean);
-  const status =
-    typeof response?.status === "string" ? response.status : "unknown";
-  const responseId = typeof response?.id === "string" ? response.id : "unknown";
-  const errorMessage =
-    typeof response?.error?.message === "string" ? response.error.message : "";
-
-  const parts = [
-    `response_id=${responseId}`,
-    `status=${status}`,
-    outputTypes.length > 0
-      ? `output_types=${outputTypes.join(",")}`
-      : "output_types=none",
-  ];
-
-  if (errorMessage) {
-    parts.push(`error=${errorMessage}`);
-  }
-
-  return parts.join("; ");
+  return obj;
 }
 
 function hasOutputType(response, type) {
-  const outputItems = Array.isArray(response?.output) ? response.output : [];
-  return outputItems.some((item) => item?.type === type);
+  const output = Array.isArray(response?.output) ? response.output : [];
+  return output.some((item) => item?.type === type);
 }
 
-function getMcpApprovalRequests(response) {
-  const outputItems = Array.isArray(response?.output) ? response.output : [];
+function getApprovals(response) {
+  const output = Array.isArray(response?.output) ? response.output : [];
 
-  return outputItems.filter(
-    (item) =>
-      item &&
-      item.type === "mcp_approval_request" &&
-      typeof item.approval_request_id === "string" &&
-      item.approval_request_id.trim(),
-  );
+  return output
+    .filter((item) => item?.type === "mcp_approval_request")
+    .map((item) => ({
+      type: "mcp_approval_response",
+      approval_request_id: item.approval_request_id,
+      approve: true,
+      reason: "Auto approved",
+    }));
 }
 
-function buildMcpApprovalResponses(response) {
-  return getMcpApprovalRequests(response).map((item) => ({
-    type: "mcp_approval_response",
-    approval_request_id: item.approval_request_id,
-    approve: true,
-    reason: `Auto-approved MCP request for ${item.server_label || "configured knowledge server"}.`,
-  }));
-}
+async function continueWithApprovals(client, response, config) {
+  let current = response;
 
-async function continueResponseWithApprovals(openAIClient, response, config) {
-  let currentResponse = response;
+  for (let i = 0; i < MAX_MCP_APPROVAL_ROUNDS; i++) {
+    const approvals = getApprovals(current);
 
-  for (let attempt = 0; attempt < MAX_MCP_APPROVAL_ROUNDS; attempt += 1) {
-    const approvals = buildMcpApprovalResponses(currentResponse);
+    if (approvals.length === 0) return current;
 
-    if (approvals.length === 0) {
-      return currentResponse;
-    }
-
-    currentResponse = await openAIClient.responses.create(
+    current = await client.responses.create(
       {
         input: approvals,
-        previous_response_id: currentResponse.id,
+        previous_response_id: current.id,
       },
       {
         body: {
@@ -344,74 +256,36 @@ async function continueResponseWithApprovals(openAIClient, response, config) {
     );
   }
 
-  throw new Error(
-    "The Azure Foundry agent kept requesting MCP approvals and did not finish after multiple approval rounds.",
-  );
+  throw new Error("Too many approval rounds.");
 }
 
 function normalizeProviderError(error) {
-  const message = String(error?.message || "Azure Foundry request failed");
-  const helpText = [];
-  const isAuthChainError =
-    /ChainedTokenCredential authentication failed/i.test(message) ||
-    /AggregateAuthenticationError/i.test(String(error?.name || "")) ||
+  const message = String(error?.message || "Backend call failure");
+
+  const authError =
+    /ChainedTokenCredential/i.test(message) ||
+    /DefaultAzureCredential/i.test(message) ||
     /CredentialUnavailableError/i.test(message);
 
-  if (isAuthChainError || /DefaultAzureCredential/i.test(message)) {
-    const hostedMessage = isStaticWebAppsRuntime()
-      ? "Azure Foundry agent requires Microsoft Entra authentication. Azure Static Web Apps managed backends do not expose managed identity to server code, so 'az login' will not fix the deployed app. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal in Static Web App environment variables, or move this API to App Service / Azure Functions / Container Apps with managed identity."
-      : isHostedInAzure()
-        ? "Azure Foundry agent requires Microsoft Entra authentication. This Azure-hosted app cannot use local 'az login'. Configure managed identity or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal."
-        : "Azure Foundry agent requires Microsoft Entra authentication. Install Azure CLI and run 'az login', or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal.";
-    const normalized = new Error(hostedMessage);
-    normalized.name = "AzureFoundryAuthError";
-    normalized.statusCode = 401;
-    normalized.details = error;
-    return normalized;
+  if (authError) {
+    const msg = isStaticWebAppsRuntime()
+      ? "Authentication failed. Check AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET."
+      : "Authentication failed. Run az login or configure service principal.";
+
+    const e = new Error(msg);
+    e.statusCode = 401;
+    return e;
   }
 
-  if (/403|Forbidden/i.test(message)) {
-    helpText.push(
-      "Verify your account has access to the Azure AI Project and Agent.",
-    );
-  }
+  const e = new Error(message || "Backend call failure");
+  e.statusCode =
+    Number(error?.statusCode) || Number(error?.response?.status) || 500;
 
-  const normalized = new Error(
-    helpText.length > 0 ? `${message} ${helpText.join(" ")}` : message,
-  );
-  normalized.name = error?.name || "AzureFoundryError";
-  normalized.statusCode =
-    Number(error?.statusCode) ||
-    Number(error?.code) ||
-    Number(error?.response?.status) ||
-    500;
-  normalized.details = error;
-  return normalized;
+  return e;
 }
 
 export function getConfiguredProvider(options = {}) {
   return getFoundryConfig(options) ? "azure_foundry_agent" : null;
-}
-
-export async function runHealthCheck(options = {}) {
-  const config = getFoundryConfig(options);
-  validateFoundryConfig(config, options);
-
-  try {
-    const projectClient = getProjectClient(config, options);
-
-    if (config.agentVersion) {
-      await projectClient.agents.getVersion(
-        config.agentName,
-        config.agentVersion,
-      );
-      return;
-    }
-
-    await projectClient.agents.get(config.agentName);
-  } catch (error) {
-    throw normalizeProviderError(error);
-  }
 }
 
 export async function generateReplyWithSource({
@@ -421,59 +295,63 @@ export async function generateReplyWithSource({
   configOptions = {},
 }) {
   const config = getFoundryConfig(configOptions);
-  validateFoundryConfig(config, configOptions);
+  validateConfig(config, configOptions);
 
-  const normalizedMessage = String(userMessage || "").trim();
-  if (!normalizedMessage) {
+  const message = clean(userMessage);
+
+  if (!message) {
     throw createConfigError("Please provide a message.");
   }
 
   try {
-    const openAIClient = getOpenAIClient(config, configOptions);
-    let currentConversationId = cleanEnvValue(conversationId);
+    const client = getOpenAIClient(config, configOptions);
+    let currentConversationId = clean(conversationId);
 
     if (currentConversationId) {
-      await openAIClient.conversations.items.create(currentConversationId, {
+      await client.conversations.items.create(currentConversationId, {
         items: [
           {
             type: "message",
             role: "user",
-            content: normalizedMessage,
+            content: message,
           },
         ],
       });
     } else {
-      const conversation = await openAIClient.conversations.create({
-        items: toConversationItems(history, normalizedMessage),
+      const conversation = await client.conversations.create({
+        items: toConversationItems(history, message),
       });
+
       currentConversationId = conversation.id;
     }
 
-    const response = await openAIClient.responses.create(
-      {
-        conversation: currentConversationId,
-      },
-      {
-        body: {
-          agent: buildAgentReference(config),
+    const response = await Promise.race([
+      client.responses.create(
+        {
+          conversation: currentConversationId,
         },
-      },
-    );
+        {
+          body: {
+            agent: buildAgentReference(config),
+          },
+        },
+      ),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Request timeout. Please try again.")),
+          30000,
+        ),
+      ),
+    ]);
 
-    const finalizedResponse = hasOutputType(response, "mcp_approval_request")
-      ? await continueResponseWithApprovals(openAIClient, response, config)
+    const finalResponse = hasOutputType(response, "mcp_approval_request")
+      ? await continueWithApprovals(client, response, config)
       : response;
-    const reply = extractReplyText(finalizedResponse);
-    if (!reply) {
-      if (hasOutputType(finalizedResponse, "mcp_approval_request")) {
-        throw new Error(
-          "The Azure Foundry agent requested MCP tool approval. This app currently supports text replies only and does not complete the MCP approval flow. Remove MCP tools from the MSME agent, or configure the agent to answer using only uploaded PDF knowledge.",
-        );
-      }
 
-      throw new Error(
-        `No response from Azure Foundry agent. ${describeResponse(finalizedResponse)}`,
-      );
+    const reply = extractReplyText(finalResponse);
+
+    if (!reply) {
+      throw new Error("No response received from Azure agent.");
     }
 
     return {
