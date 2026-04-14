@@ -17,14 +17,16 @@ function ensureAzureCliOnPath() {
     "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin",
   ];
   const missingCandidates = candidates.filter(
-    (candidate) => existsSync(candidate) && !currentPath.includes(candidate)
+    (candidate) => existsSync(candidate) && !currentPath.includes(candidate),
   );
 
   if (missingCandidates.length === 0) {
     return;
   }
 
-  process.env.PATH = [currentPath, ...missingCandidates].filter(Boolean).join(";");
+  process.env.PATH = [currentPath, ...missingCandidates]
+    .filter(Boolean)
+    .join(";");
 }
 
 function trimTrailingSlash(value = "") {
@@ -53,7 +55,7 @@ function isHostedInAzure() {
     cleanEnvValue(process.env.WEBSITE_SITE_NAME) ||
       cleanEnvValue(process.env.WEBSITE_INSTANCE_ID) ||
       cleanEnvValue(process.env.AzureWebJobsStorage) ||
-      cleanEnvValue(process.env.IDENTITY_ENDPOINT)
+      cleanEnvValue(process.env.IDENTITY_ENDPOINT),
   );
 }
 
@@ -62,7 +64,10 @@ function isStaticWebAppsRuntime() {
     cleanEnvValue(process.env.SWA_CLI_DEPLOYMENT_TOKEN) ||
       cleanEnvValue(process.env.SWA_RUNTIME_CONFIG) ||
       cleanEnvValue(process.env.STATIC_WEB_APP) ||
-      (isHostedInAzure() && cleanEnvValue(process.env.WEBSITE_HOSTNAME).includes(".azurestaticapps.net"))
+      (isHostedInAzure() &&
+        cleanEnvValue(process.env.WEBSITE_HOSTNAME).includes(
+          ".azurestaticapps.net",
+        )),
   );
 }
 
@@ -105,11 +110,12 @@ function getFoundryConfig(options = {}) {
     ? options.agentVersionEnvNames
     : ["AZURE_AI_AGENT_VERSION"];
   const projectEndpoint = trimTrailingSlash(
-    readFirstEnv(projectEndpointEnvNames)
+    readFirstEnv(projectEndpointEnvNames),
   );
   const parsedAgent = parseAgentIdentifier(readFirstEnv(agentIdEnvNames));
   const agentName = readFirstEnv(agentNameEnvNames) || parsedAgent.name;
-  const agentVersion = readFirstEnv(agentVersionEnvNames) || parsedAgent.version;
+  const agentVersion =
+    readFirstEnv(agentVersionEnvNames) || parsedAgent.version;
 
   if (looksLikeUrl(agentName)) {
     throw createConfigError(
@@ -135,7 +141,8 @@ function getFoundryConfig(options = {}) {
 }
 
 function validateFoundryConfig(config, options = {}) {
-  const configLabel = cleanEnvValue(options.configLabel) || "Azure Foundry agent";
+  const configLabel =
+    cleanEnvValue(options.configLabel) || "Azure Foundry agent";
 
   if (!config) {
     throw createConfigError(
@@ -143,7 +150,11 @@ function validateFoundryConfig(config, options = {}) {
     );
   }
 
-  if (!/^https:\/\/[^/]+\.services\.ai\.azure\.com\/api\/projects\/[^/]+$/i.test(config.projectEndpoint)) {
+  if (
+    !/^https:\/\/[^/]+\.services\.ai\.azure\.com\/api\/projects\/[^/]+$/i.test(
+      config.projectEndpoint,
+    )
+  ) {
     throw createConfigError(
       `Invalid ${configLabel} project endpoint. Use format: https://<resource>.services.ai.azure.com/api/projects/<project-name>`,
     );
@@ -156,11 +167,15 @@ function getProjectClient(config, options = {}) {
 
   if (!projectClientCache.has(config.projectEndpoint)) {
     const credential = new DefaultAzureCredential();
-    const projectClient = new AIProjectClient(config.projectEndpoint, credential, {
-      userAgentOptions: {
-        userAgentPrefix: "finlending",
+    const projectClient = new AIProjectClient(
+      config.projectEndpoint,
+      credential,
+      {
+        userAgentOptions: {
+          userAgentPrefix: "finlending",
+        },
       },
-    });
+    );
     projectClientCache.set(config.projectEndpoint, projectClient);
   }
 
@@ -188,7 +203,7 @@ function toConversationItems(history, userMessage) {
         item &&
         (item.who === "user" || item.who === "ai") &&
         typeof item.text === "string" &&
-        item.text.trim()
+        item.text.trim(),
     )
     .map((item) => ({
       type: "message",
@@ -206,7 +221,10 @@ function toConversationItems(history, userMessage) {
 }
 
 function extractReplyText(response) {
-  if (typeof response?.output_text === "string" && response.output_text.trim()) {
+  if (
+    typeof response?.output_text === "string" &&
+    response.output_text.trim()
+  ) {
     return response.output_text.trim();
   }
 
@@ -225,9 +243,9 @@ function extractReplyText(response) {
           ? part.text
           : typeof part?.text?.value === "string"
             ? part.text.value
-          : typeof part?.output_text === "string"
-            ? part.output_text
-            : "";
+            : typeof part?.output_text === "string"
+              ? part.output_text
+              : "";
 
       if (text.trim()) {
         texts.push(text.trim());
@@ -256,7 +274,8 @@ function describeResponse(response) {
   const outputTypes = outputItems
     .map((item) => String(item?.type || "unknown"))
     .filter(Boolean);
-  const status = typeof response?.status === "string" ? response.status : "unknown";
+  const status =
+    typeof response?.status === "string" ? response.status : "unknown";
   const responseId = typeof response?.id === "string" ? response.id : "unknown";
   const errorMessage =
     typeof response?.error?.message === "string" ? response.error.message : "";
@@ -264,7 +283,9 @@ function describeResponse(response) {
   const parts = [
     `response_id=${responseId}`,
     `status=${status}`,
-    outputTypes.length > 0 ? `output_types=${outputTypes.join(",")}` : "output_types=none",
+    outputTypes.length > 0
+      ? `output_types=${outputTypes.join(",")}`
+      : "output_types=none",
   ];
 
   if (errorMessage) {
@@ -287,7 +308,7 @@ function getMcpApprovalRequests(response) {
       item &&
       item.type === "mcp_approval_request" &&
       typeof item.approval_request_id === "string" &&
-      item.approval_request_id.trim()
+      item.approval_request_id.trim(),
   );
 }
 
@@ -319,7 +340,7 @@ async function continueResponseWithApprovals(openAIClient, response, config) {
         body: {
           agent: buildAgentReference(config),
         },
-      }
+      },
     );
   }
 
@@ -342,9 +363,7 @@ function normalizeProviderError(error) {
       : isHostedInAzure()
         ? "Azure Foundry agent requires Microsoft Entra authentication. This Azure-hosted app cannot use local 'az login'. Configure managed identity or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal."
         : "Azure Foundry agent requires Microsoft Entra authentication. Install Azure CLI and run 'az login', or set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET for a service principal.";
-    const normalized = new Error(
-      hostedMessage
-    );
+    const normalized = new Error(hostedMessage);
     normalized.name = "AzureFoundryAuthError";
     normalized.statusCode = 401;
     normalized.details = error;
@@ -352,11 +371,13 @@ function normalizeProviderError(error) {
   }
 
   if (/403|Forbidden/i.test(message)) {
-    helpText.push("Verify your account has access to the Azure AI Project and Agent.");
+    helpText.push(
+      "Verify your account has access to the Azure AI Project and Agent.",
+    );
   }
 
   const normalized = new Error(
-    helpText.length > 0 ? `${message} ${helpText.join(" ")}` : message
+    helpText.length > 0 ? `${message} ${helpText.join(" ")}` : message,
   );
   normalized.name = error?.name || "AzureFoundryError";
   normalized.statusCode =
@@ -380,7 +401,10 @@ export async function runHealthCheck(options = {}) {
     const projectClient = getProjectClient(config, options);
 
     if (config.agentVersion) {
-      await projectClient.agents.getVersion(config.agentName, config.agentVersion);
+      await projectClient.agents.getVersion(
+        config.agentName,
+        config.agentVersion,
+      );
       return;
     }
 
@@ -433,7 +457,7 @@ export async function generateReplyWithSource({
         body: {
           agent: buildAgentReference(config),
         },
-      }
+      },
     );
 
     const finalizedResponse = hasOutputType(response, "mcp_approval_request")

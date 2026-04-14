@@ -242,7 +242,10 @@ export default function FinLendingApp({ phoneNumber = "" }) {
       conversationId: null,
     };
     const previousMessages = nextChat.messages;
-    const nextMessages = [...nextChat.messages, { who: "user", text: visibleText }];
+    const nextMessages = [
+      ...nextChat.messages,
+      { who: "user", text: visibleText },
+    ];
     const nextChats = chats.filter((chat) => chat.id !== chatId);
     setChats([{ ...nextChat, messages: nextMessages }, ...nextChats]);
     setActiveChatId(chatId);
@@ -269,7 +272,9 @@ export default function FinLendingApp({ phoneNumber = "" }) {
         {
           who: "ai",
           text:
-            data?.reply || data?.error || "The assistant did not return a reply.",
+            data?.reply ||
+            data?.error ||
+            "The assistant did not return a reply.",
         },
       ];
       setChats((prev) =>
@@ -279,7 +284,10 @@ export default function FinLendingApp({ phoneNumber = "" }) {
                 ...chat,
                 messages: updatedMessages,
                 conversationId:
-                  data.conversationId || data.threadId || chat.conversationId || null,
+                  data.conversationId ||
+                  data.threadId ||
+                  chat.conversationId ||
+                  null,
               }
             : chat,
         ),
@@ -404,7 +412,7 @@ export default function FinLendingApp({ phoneNumber = "" }) {
               <path d="M15 10h.01" />
               <path d="M15 13h.01" />
             </svg>
-            <span>MSME Subsidy Finder</span>
+            <span>MSME Subsidy Agent</span>
           </Link>
         </div>
 
@@ -485,7 +493,10 @@ export default function FinLendingApp({ phoneNumber = "" }) {
             <path d="M9 5v14" />
           </svg>
         </button>
-        <div className="profile-menu profile-menu-floating" ref={profileMenuRef}>
+        <div
+          className="profile-menu profile-menu-floating"
+          ref={profileMenuRef}
+        >
           <button
             className="profile-trigger"
             type="button"
