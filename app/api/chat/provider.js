@@ -179,9 +179,17 @@ function toConversationItems(history, userMessage) {
   return items;
 }
 
+function stripCitationArtifacts(text) {
+  return String(text || "")
+    .replace(/【[^【】]*†[^【】]*】/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function extractReplyText(response) {
   if (typeof response?.output_text === "string") {
-    return response.output_text.trim();
+    return stripCitationArtifacts(response.output_text);
   }
 
   const outputs = Array.isArray(response?.output) ? response.output : [];
@@ -201,7 +209,7 @@ function extractReplyText(response) {
     }
   }
 
-  return texts.join("\n").trim();
+  return stripCitationArtifacts(texts.join("\n"));
 }
 
 function buildAgentReference(config) {
@@ -286,6 +294,30 @@ function normalizeProviderError(error) {
 
 export function getConfiguredProvider(options = {}) {
   return getFoundryConfig(options) ? "azure_foundry_agent" : null;
+}
+
+export async function runHealthCheck(configOptions = {}) {
+  try {
+    const config = getFoundryConfig(configOptions);
+    validateConfig(config, configOptions);
+
+    const client = getProjectClient(config, configOptions);
+
+    if (config.agentVersion) {
+      await client.agents.getVersion(config.agentName, config.agentVersion);
+    } else {
+      await client.agents.get(config.agentName);
+    }
+
+    return {
+      ok: true,
+      provider: "azure_foundry_agent",
+      agentName: config.agentName,
+      agentVersion: config.agentVersion || null,
+    };
+  } catch (error) {
+    throw normalizeProviderError(error);
+  }
 }
 
 export async function generateReplyWithSource({

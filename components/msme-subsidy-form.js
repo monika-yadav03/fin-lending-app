@@ -9,6 +9,7 @@ export default function MsmeSubsidyForm({ phoneNumber = "" }) {
   const router = useRouter();
 
   const [messages, setMessages] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -60,10 +61,17 @@ export default function MsmeSubsidyForm({ phoneNumber = "" }) {
     setMessages((prev) => [...prev, { role, content }]);
   }
 
+  function startNewChat() {
+    setMessages([]);
+    setConversationId(null);
+    setInput("");
+  }
+
   async function handleSend() {
     if (!input.trim() || loading) return;
 
     const text = input.trim();
+    const previousMessages = messages;
     addMessage("user", text);
     setInput("");
 
@@ -77,9 +85,9 @@ export default function MsmeSubsidyForm({ phoneNumber = "" }) {
         },
         body: JSON.stringify({
           message: text,
-          history: messages,
-          threadId: null,
-          conversationId: null,
+          history: previousMessages,
+          threadId: conversationId || null,
+          conversationId: conversationId || null,
         }),
       });
 
@@ -90,6 +98,9 @@ export default function MsmeSubsidyForm({ phoneNumber = "" }) {
       }
 
       addMessage("assistant", data?.reply || "No response returned.");
+      setConversationId(
+        data?.conversationId || data?.threadId || conversationId || null,
+      );
     } catch (error) {
       addMessage(
         "assistant",
@@ -117,7 +128,7 @@ export default function MsmeSubsidyForm({ phoneNumber = "" }) {
           <button
             className="new-chat-btn"
             type="button"
-            onClick={() => setMessages([])}
+            onClick={startNewChat}
           >
             +
           </button>
